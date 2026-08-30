@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>argus-shader A/B comparison harness</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; background: #14161a; color: #e8e8e8; }
+  h1 { font-size: 1.1rem; margin: 0 0 .25rem; }
+  p.sub { color: #9aa0a6; margin: 0 0 1.25rem; font-size: .85rem; }
+  .controls { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; padding: .75rem; background: #1e2126; border-radius: 8px; }
+  .controls label { font-size: .8rem; display: flex; flex-direction: column; gap: .25rem; }
+  input[type=file] { color: inherit; }
+  button { background: #3b6fd4; color: #fff; border: 0; border-radius: 6px; padding: .5rem .9rem; cursor: pointer; font-size: .85rem; }
+  button.secondary { background: #363b44; }
+  button:disabled { opacity: .4; cursor: default; }
+  .status { font-size: .8rem; color: #9aa0a6; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
+  .pair { background: #1e2126; border-radius: 8px; padding: .75rem; }
+  .pair h3 { margin: 0 0 .5rem; font-size: .8rem; font-weight: 600; color: #cfd3d8; word-break: break-all; }
+  .imgs { display: flex; gap: .5rem; }
+  .slot { flex: 1; min-width: 0; }
+  .slot img { width: 100%; display: block; image-rendering: pixelated; border-radius: 4px; border: 2px solid transparent; cursor: pointer; background: #000; }
+  .slot img.picked { border-color: #3b6fd4; }
+  .slot .tag { font-size: .7rem; color: #7d838a; margin-top: .25rem; text-align: center; }
+  .missing { color: #d47a3b; font-size: .8rem; }
+  #exportArea { margin-top: 1.5rem; }
+  textarea { width: 100%; height: 140px; background: #0f1114; color: #d8dbe0; border: 1px solid #2a2e35; border-radius: 6px; font-family: ui-monospace, monospace; font-size: .75rem; padding: .5rem; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<h1>argus-shader A/B comparison harness</h1>
+<p class="sub">
+  T-012 — loads two local result sets (e.g. a golden-image dump per preset/tier/backend),
+  matches images by filename, and presents crops side by side. Runs entirely client-side,
+  no upload. See docs/backlog.md T-012.
+</p>
+
+<div class="controls">
+  <label>Set A (baseline, e.g. nearest-neighbour or a prior build)
+    <input type="file" id="setA" webkitdirectory multiple>
+  </label>
+  <label>Set B (candidate)
+    <input type="file" id="setB" webkitdirectory multiple>
+  </label>
+  <label>Mode
+    <select id="mode">
+      <option value="labeled">Labeled (A / B visible)</option>
+      <option value="blind">Blind (randomized per pair, for surveys)</option>
+    </select>
+  </label>
+  <button id="rebuild" disabled>Build comparison</button>
+  <button id="exportBtn" class="secondary" disabled>Export results</button>
+  <span class="status" id="status">Load two sets to begin.</span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div id="exportArea" hidden>
+  <h3>Exported comparison (copy or save as .json)</h3>
+  <textarea id="exportText" readonly></textarea>
+</div>
+
+<script>
+"use strict";
+
+let filesA = new Map(); // basename -> File
+let filesB = new Map();
+let picks = {}; // basename -> "A" | "B" | null
+
+function indexFiles(fileList) {
+  const m = new Map();
+  for (const f of fileList) {
+    // webkitdirectory gives relative paths like "setname/sub/file.png";
+    // match on basename so two differently-named top folders still line up.
+    const base = f.webkitRelativePath ? f.webkitRelativePath.split("/").slice(1).join("/") : f.name;
+    m.set(base || f.name, f);
+  }
+  return m;
+}
+
+function updateStatus() {
+  const status = document.getElementById("status");
+  const rebuild = document.getElementById("rebuild");
+  if (filesA.size && filesB.size) {
+    status.textContent = `Set A: ${filesA.size} files, Set B: ${filesB.size} files. Ready.`;
+    rebuild.disabled = false;
+  } else {
+    status.textContent = "Load two sets to begin.";
+    rebuild.disabled = true;
+  }
+}
+
+document.getElementById("setA").addEventListener("change", (e) => {
+  filesA = indexFiles(e.target.files);
+  updateStatus();
+});
+document.getElementById("setB").addEventListener("change", (e) => {
+  filesB = indexFiles(e.target.files);
+  updateStatus();
+});
+
+function buildGrid() {
+  const mode = document.getElementById("mode").value;
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  picks = {};
+
+  const allNames = new Set([...filesA.keys(), ...filesB.keys()]);
+  const sorted = [...allNames].sort();
+
+  for (const name of sorted) {
+    const fa = filesA.get(name);
+    const fb = filesB.get(name);
+    const pair = document.createElement("div");
+    pair.className = "pair";
+
+    const title = document.createElement("h3");
+    title.textContent = name;
+    pair.appendChild(title);
+
+    if (!fa || !fb) {
+      const miss = document.createElement("div");
+      miss.className = "missing";
+      miss.textContent = `missing in ${!fa ? "Set A" : "Set B"} — skipped from comparison`;
+      pair.appendChild(miss);
+      grid.appendChild(pair);
+      continue;
+    }
+
+    const imgsDiv = document.createElement("div");
+    imgsDiv.className = "imgs";
+
+    // Blind mode: randomize which physical slot (left/right) holds A vs B,
+    // but remember the true mapping in `trueLabel` for export.
+    let left = { file: fa, trueLabel: "A" };
+    let right = { file: fb, trueLabel: "B" };
+    if (mode === "blind" && Math.random() < 0.5) {
+      [left, right] = [right, left];
+    }
+
+    picks[name] = { pick: null, leftIsTrue: left.trueLabel };
+
+    for (const side of [left, right]) {
+      const slot = document.createElement("div");
+      slot.className = "slot";
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(side.file);
+      img.dataset.trueLabel = side.trueLabel;
+      img.addEventListener("click", () => {
+        for (const el of imgsDiv.querySelectorAll("img")) el.classList.remove("picked");
+        img.classList.add("picked");
+        picks[name].pick = side.trueLabel;
+      });
+      slot.appendChild(img);
+      const tag = document.createElement("div");
+      tag.className = "tag";
+      tag.textContent = mode === "blind" ? "?" : side.trueLabel;
+      slot.appendChild(tag);
+      imgsDiv.appendChild(slot);
+    }
+
+    pair.appendChild(imgsDiv);
+    grid.appendChild(pair);
+  }
+
+  document.getElementById("exportBtn").disabled = sorted.length === 0;
+}
+
+document.getElementById("rebuild").addEventListener("click", buildGrid);
+
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const mode = document.getElementById("mode").value;
+  const result = {
+    generated_at: new Date().toISOString(),
+    mode,
+    pairs: Object.entries(picks).map(([name, v]) => ({ name, preferred: v.pick })),
+  };
+  const text = JSON.stringify(result, null, 2);
+  document.getElementById("exportText").value = text;
+  document.getElementById("exportArea").hidden = false;
+});
+</script>
+</body>
+</html>
