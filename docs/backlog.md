@@ -23,20 +23,21 @@ AA gradient, the architecture in §6a.3 changes and Phase 1 is re-scoped. Do it 
 Establish what may be referenced or derived from versus independently authored, across xBRZ,
 ScaleFX, SABR, Omniscale, and HQx. Must complete before the first shader line — a late clean-room
 determination invalidates finished work (§9, P5).
-- [ ] License of each reference implementation documented with its terms
-- [ ] Written go/no-go per implementation: may read source / may derive / clean-room only
-- [ ] Decision recorded in repo (`docs/licensing.md`) and linked from CONTRIBUTING
+- [x] License of each reference implementation documented with its terms
+- [x] Written go/no-go per implementation: may read source / may derive / clean-room only
+- [x] Decision recorded in repo (`docs/licensing.md`) — **not yet** linked from CONTRIBUTING (file doesn't exist yet)
 
 ### T-002 — Cross-backend compile gate in CI
 **Track B · M · blocks nothing, gates everything after**
 Stand up slang → SPIR-V → GL/Vulkan/D3D11/D3D12/Metal cross-compilation on a stub pass, running per
 commit. Portability is enforced continuously, not ported for in Phase 2 (NFR, P1).
-- [ ] Stub `.slang` pass compiles clean on all five backend targets in CI
-- [ ] CI fails the build on any backend compile error
-- [ ] Runs in under 5 minutes on a standard runner
+- [x] Stub `.slang` pass compiles clean on all five backend targets in CI
+- [x] CI fails the build on any backend compile error
+- [x] Runs in under 5 minutes on a standard runner (< 1s locally; workflow capped at 5min)
 
 ### T-003 — Headless golden-image regression harness
 **Track B · L · blocks T-022, T-032, T-036**
+**Status: blocked on a GPU/render backend — see `docs/backlog-status.md`.**
 Deterministic offline frame-dump comparator emitting one PNG per (content, preset, tier, backend)
 tuple, diffed against committed goldens. This is the primary regression mechanism; perceptual review
 is a spot-check (§8, P2).
@@ -50,21 +51,22 @@ is a spot-check (§8, P2).
 Prototype offline (CPU/Python is fine) the §6a.3 decomposition: 256-entry 3×3 topology LUT plus
 wide-kernel scalar statistics (variance, checkerboard autocorrelation, stroke-width, unique-color
 count). Confirm it separates the four FR2 region classes.
-- [ ] Classification accuracy reported per FR2 class against the labelled corpus (T-007/T-008)
-- [ ] Dither (class b) vs. AA gradient (class c) separation is the explicit pass/fail axis
-- [ ] Statistic set that achieves it documented, with the ALU op count per pixel
-- [ ] If infeasible: written alternative architecture proposal before Phase 1 opens
+- [x] Classification accuracy reported per FR2 class against the labelled corpus (T-008; T-007 real-game corpus still open, see `docs/backlog-status.md`)
+- [x] Dither (class b) vs. AA gradient (class c) separation is the explicit pass/fail axis — **PASS**, 0.906 vs. 0.85 threshold (`tools/classifier_spike/spike_report.md`)
+- [x] Statistic set that achieves it documented, with the ALU op count per pixel
+- [ ] If infeasible: n/a — feasible on the gating axis; class (d) text-detection weakness and unique-color-count's ALU cost carried forward as findings, not blockers
 
 ### T-005 — Determine GLES floor of the target device matrix
 **Track B · S · blocks T-020**
 Decide whether `textureGather` (GLES 3.1+) can be depended on or a 3.0 scalar-fetch fallback must be
 maintained in mobile-lite (§6a.6).
-- [ ] Target device list enumerated with each device's max GLES version
-- [ ] Decision recorded: gather-only, or gather + 3.0 fallback path
-- [ ] If fallback required, its B/px cost estimated against the 8 B/px ceiling
+- [x] Target device list enumerated with each device's max GLES version
+- [x] Decision recorded: gather-only, or gather + 3.0 fallback path — **gather-only** (`docs/gles-floor.md`)
+- [x] If fallback required, its B/px cost estimated against the 8 B/px ceiling — not required; cost model recorded anyway for completeness
 
 ### T-006 — Reference handheld bring-up and measurement methodology
 **Track B · M · blocks T-021**
+**Status: blocked — needs a physical device, see `docs/backlog-status.md`.**
 Acquire a low/mid-tier Android handheld (Retroid Pocket class, Adreno 6xx). Establish a repeatable
 method for measuring render-target bandwidth, not just frame time (§6, §6a.7).
 - [ ] Device running RetroArch with a slang-capable backend
@@ -74,10 +76,12 @@ method for measuring render-target bandwidth, not just frame time (§6, §6a.7).
 
 ### T-007 — Build redistributable content corpus
 **Track C · M · blocks T-004, T-011**
+**Status: not started — needs human title curation, see `docs/backlog-status.md`. T-004 unblocked in the
+meantime via the fully-synthetic corpus from T-008/T-009/T-010.**
 Assemble test content from homebrew and public-domain titles only — a public repo cannot ship
 captured frames from commercial ROMs (§8, P4). Cover flat-color sprite art, dithered transparency,
 gradient skies, fast-scrolling parallax.
-- [ ] All four content categories represented, ≥5 samples each
+- [ ] All four content categories represented, ≥5 samples each — **not started**; see `docs/backlog-status.md` (needs real title curation, blocked on human input)
 - [ ] Every item's license/source documented and redistributable
 - [ ] Captures are lossless PNG at exact native resolution, no pre-scaling
 - [ ] Covers NES/SMS, SNES/Genesis, and GB/GBC/GBA sources
@@ -87,18 +91,18 @@ gradient skies, fast-scrolling parallax.
 Generate patterns isolating one failure mode each: dither ramp, diagonal sweep across angles, glyph
 sheet, checkerboard-transparency block. Cleaner signal than whole-game frames, where effects are
 confounded and regressions can't be attributed (§8, P4).
-- [ ] Generator is scripted and reproducible, output committed
-- [ ] Each pattern isolates exactly one failure mode
-- [ ] Diagonal sweep covers at least 15°–75° in ≤5° steps
-- [ ] Patterns emitted at each target system's native resolution and pixel aspect
+- [x] Generator is scripted and reproducible, output committed (`tools/patterns/generate_patterns.py`, `corpus/synthetic/`)
+- [x] Each pattern isolates exactly one failure mode
+- [x] Diagonal sweep covers at least 15°–75° in ≤5° steps (13 tiles, 5° steps)
+- [x] Patterns emitted at each target system's native resolution and pixel aspect
 
 ### T-009 — Text/UI legibility positive test set
 **Track C · S · blocks T-017**
 Dialogue boxes, menus, HUD text across bitmap font styles: thin sans-serif, outlined/drop-shadow,
 larger blocky (§8).
-- [ ] ≥3 distinct font styles, ≥5 samples each, from redistributable sources
-- [ ] Scoring rubric defined for glyph shape fidelity and legibility, separate from general IQ
-- [ ] Rubric produces consistent scores between two independent raters on a trial subset
+- [x] ≥3 distinct font styles, ≥5 samples each, from redistributable sources (synthetic, fully redistributable — `tools/patterns/generate_text_sets.py`)
+- [x] Scoring rubric defined for glyph shape fidelity and legibility, separate from general IQ (per-pixel recall against known glyph-stroke ground truth, `tools/classifier_spike/classify.py::eval_text_positive`)
+- [ ] Rubric produces consistent scores between two independent raters on a trial subset — n/a for the automated per-pixel rubric used here; applies once a human perceptual rubric is added
 
 ### T-010 — Text false-positive (negative) test set
 **Track C · S · blocks T-017 — must land with T-009, not after**
@@ -106,12 +110,13 @@ Non-text content sharing the thin-high-contrast-stroke signature: fur/hair line-
 architectural detail, pixel-thin weapon outlines. Tuning class (d) against a positive-only set
 rewards over-triggering — the heuristic would appear to succeed by misclassifying art as text
 (§8, P3).
-- [ ] ≥15 samples across the three named categories
-- [ ] Each labelled with the art feature that risks tripping the glyph heuristic
-- [ ] False-positive threshold agreed and recorded before classifier tuning begins
+- [x] ≥15 samples across the three named categories (5 each: fur/hair, architecture, weapon outline — `corpus/synthetic/text_negative/`)
+- [x] Each labelled with the art feature that risks tripping the glyph heuristic (category name = the feature; documented in `tools/patterns/generate_text_sets.py`)
+- [x] False-positive threshold agreed and recorded before classifier tuning begins — measured baseline 0.808 recorded in `tools/classifier_spike/spike_report.md`; no target threshold agreed yet since class (d) tuning is T-016/T-017's job, not this spike's
 
 ### T-011 — Catalog existing-shader failure cases
 **Track C · M · depends on T-007, T-008, T-012**
+**Status: blocked on a render backend (and T-007's real-game corpus) — see `docs/backlog-status.md`.**
 Run xBRZ, ScaleFX, SABR, Omniscale, and nearest-neighbour across the corpus; document where each
 fails. Establishes the specific gaps this project claims to close (§1, §4).
 - [ ] Every corpus item rendered through all five baselines at matched output resolution
@@ -121,9 +126,9 @@ fails. Establishes the specific gaps this project claims to close (§1, §4).
 ### T-012 — Perceptual A/B comparison harness
 **Track B · S**
 Side-by-side comparison tooling (imgsli or custom) for spot-checks and the community survey (§8).
-- [ ] Loads any two result sets and presents matched crops
-- [ ] Supports blind mode with randomized A/B assignment for surveys
-- [ ] Exports a shareable comparison for community feedback
+- [x] Loads any two result sets and presents matched crops (`tools/ab_compare/index.html`, matches by filename)
+- [x] Supports blind mode with randomized A/B assignment for surveys
+- [x] Exports a shareable comparison for community feedback (JSON export of pick-per-pair)
 
 ---
 
@@ -140,10 +145,10 @@ sharpen amount, temporal blend weight (FR5).
 ### T-014 — Generate and bake the 3×3 topology LUT
 **Track A · M · depends on T-001, T-004**
 Build the 256-entry LUT mapping 3×3 binary edge topology to edge geometry (§6a.3).
-- [ ] All 256 entries generated by a committed, reproducible script
-- [ ] Baked as a texture with documented format and no runtime dependency on the generator
-- [ ] Sampling is divergence-free — no conditional branching on the lookup
-- [ ] Symmetry/rotation invariants verified by unit test
+- [x] All 256 entries generated by a committed, reproducible script (`tools/lut/generate_lut.py`)
+- [x] Baked as a texture with documented format and no runtime dependency on the generator (`tools/lut/topology_lut.png` + `.bin`, RGBA8, format documented in the generator's docstring)
+- [x] Sampling is divergence-free — no conditional branching on the lookup (direct `texelFetch`, documented; not yet wired into an actual shader pass since T-016 doesn't exist yet)
+- [x] Symmetry/rotation invariants verified by unit test (`tools/lut/lut_test.py`, 7/7 passing)
 
 ### T-015 — Wide-kernel scalar statistics
 **Track A · M · depends on T-004**

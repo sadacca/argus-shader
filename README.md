@@ -49,18 +49,41 @@ Each tier carries a hard bandwidth ceiling in bytes per output pixel (8 / 10 / 3
 
 ## Status
 
-Draft v0.2 — scoping and planning. No shader implementation yet.
+Phase 0 (research & de-risking) is substantially complete. **T-004, the highest-risk item, passed**:
+the two-level classifier separates intentional dithering from already-anti-aliased gradients
+(0.906 vs. the 0.85 bar — see [`tools/classifier_spike/spike_report.md`](tools/classifier_spike/spike_report.md)),
+so the architecture in `docs/requirements.md` §6a.3 stands and Phase 1 is not re-scoped.
 
-Next step is Phase 0: de-risking and infrastructure. The highest-risk open item is
-[T-004](docs/backlog.md#t-004--spike-two-level-classifier-feasibility-️-highest-risk) — if the
-two-level classifier can't separate intentional dithering from already-anti-aliased gradients, the
-architecture changes and Phase 1 is re-scoped.
+Also done: licensing posture (T-001), the cross-backend compile gate (T-002), the GLES floor
+decision (T-005), the synthetic test corpus (T-008/T-009/T-010), the perceptual A/B harness
+(T-012), and the baked 3×3 topology LUT (T-014). See
+[`docs/backlog-status.md`](docs/backlog-status.md) for the full rundown.
+
+What's left in Phase 0 — the golden-image render harness (T-003), real handheld bring-up (T-006),
+a real-game content corpus (T-007), and cataloging existing shaders' failure modes (T-011) — all
+need something this build pass couldn't provide by itself: a GPU-capable environment, physical
+reference hardware, or a human call on which homebrew titles to include. Each is documented in
+`docs/backlog-status.md` with what specifically would unblock it. No shader implementation
+(Phase 1, T-013 onward) has started yet.
 
 ## Project structure
 
 ```
 docs/
-  requirements.md   Full requirements document (v0.2)
-  review-notes.md   Technical review behind the v0.2 revisions
-  backlog.md        Phased ticket backlog with acceptance criteria
+  requirements.md      Full requirements document (v0.2)
+  review-notes.md       Technical review behind the v0.2 revisions
+  backlog.md            Phased ticket backlog with acceptance criteria
+  backlog-status.md     What's done, what's blocked, and on what (this build session)
+  licensing.md           T-001: license posture for reference shaders
+  gles-floor.md          T-005: target-device GLES floor decision
+tools/
+  compile_gate/          T-002: stub .slang pass + cross-backend compile check
+  classifier_spike/      T-004: offline classifier feasibility spike + report
+  patterns/               T-008/T-009/T-010: synthetic test corpus generators
+  lut/                    T-014: 3x3 topology LUT generator + invariant tests
+  ab_compare/             T-012: perceptual A/B comparison harness
+corpus/synthetic/        Generated test images (dither ramps, diagonal sweeps,
+                          glyph sheets, checkerboard blocks, text pos/neg sets)
+.github/workflows/
+  compile-gate.yml        CI wiring for the T-002 compile gate
 ```
