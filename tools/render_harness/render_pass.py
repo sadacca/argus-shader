@@ -98,6 +98,32 @@ def set_param_uniforms(prog: int, params: dict):
             GL.glUniform1f(loc, value)
 
 
+def set_standard_push_constants(prog: int, src_w: int, src_h: int, out_w: int, out_h: int):
+    """T-018 addition: many single-pass libretro slang shaders (this
+    project's own passes among them use a UBO instead, but third-party
+    comparison shaders like Omniscale commonly don't) put SourceSize/
+    OriginalSize/OutputSize/FrameCount in the push-constant block instead of
+    the UBO. spirv-cross's GLES output flattens that into a plain
+    `uniform Push params` struct addressable the same way as this project's
+    own FR5 params (`params.<field>`), so this is a best-effort set of the
+    same four fields RetroArch's own filter-chain always provides, purely
+    additive: a no-op for this project's own shaders, which don't declare
+    push-constant fields with these names."""
+    source_size = (float(src_w), float(src_h), 1.0 / src_w, 1.0 / src_h)
+    output_size = (float(out_w), float(out_h), 1.0 / out_w, 1.0 / out_h)
+    for field_name, value in (
+        ("SourceSize", source_size),
+        ("OriginalSize", source_size),  # no prior filter-chain pass in this harness — same as Source
+        ("OutputSize", output_size),
+    ):
+        loc = GL.glGetUniformLocation(prog, f"params.{field_name}")
+        if loc != -1:
+            GL.glUniform4f(loc, *value)
+    loc = GL.glGetUniformLocation(prog, "params.FrameCount")
+    if loc != -1:
+        GL.glUniform1ui(loc, 0)
+
+
 def make_texture(image: np.ndarray) -> int:
     tex = GL.glGenTextures(1)
     GL.glBindTexture(GL.GL_TEXTURE_2D, tex)
@@ -112,7 +138,14 @@ def make_texture(image: np.ndarray) -> int:
     return tex
 
 
-def render_pass(slang_path: Path, source_png: Path, scale: float, tmpdir: Path, params: dict):
+def render_pass(slang_path: Path, source_png: Path, scale: float, tmpdir: Path, params: dict,
+                 extra_textures: dict = None):
+    """extra_textures: optional {sampler_uniform_name: png_path} for shaders
+    that read a second static texture besides Source (T-018 addition: LUT
+    textures aren't part of any preset this harness handled before). Bound
+    starting at texture unit 1, nearest-filtered, clamp-to-edge — same
+    convention as Source and as tools/lut/generate_lut.py's own stated
+    consumption model (`texelFetch`, no interpolation)."""
     src_img = np.array(Image.open(source_png).convert("RGBA"))
     src_h, src_w = src_img.shape[:2]
     out_w, out_h = int(src_w * scale), int(src_h * scale)
@@ -138,6 +171,7 @@ def render_pass(slang_path: Path, source_png: Path, scale: float, tmpdir: Path, 
             GL.glBindBufferBase(GL.GL_UNIFORM_BUFFER, 0, ubo)
 
         set_param_uniforms(prog, params)
+        set_standard_push_constants(prog, src_w, src_h, out_w, out_h)
 
         tex = make_texture(src_img)
         sampler_loc = GL.glGetUniformLocation(prog, "Source")
@@ -145,6 +179,15 @@ def render_pass(slang_path: Path, source_png: Path, scale: float, tmpdir: Path, 
             GL.glActiveTexture(GL.GL_TEXTURE0)
             GL.glBindTexture(GL.GL_TEXTURE_2D, tex)
             GL.glUniform1i(sampler_loc, 0)
+
+        for unit, (name, tex_png) in enumerate((extra_textures or {}).items(), start=1):
+            extra_loc = GL.glGetUniformLocation(prog, name)
+            if extra_loc != -1:
+                extra_img = np.array(Image.open(tex_png).convert("RGBA"))
+                extra_tex = make_texture(extra_img)
+                GL.glActiveTexture(GL.GL_TEXTURE0 + unit)
+                GL.glBindTexture(GL.GL_TEXTURE_2D, extra_tex)
+                GL.glUniform1i(extra_loc, unit)
 
         pos_vbo = GL.glGenBuffers(1)
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, pos_vbo)

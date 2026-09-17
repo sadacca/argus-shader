@@ -1,0 +1,182 @@
+# T-018 — LUT-topology edge reconstruction (classes a/c)
+
+Resolves the reconstruction-rule and no-regression halves of
+[T-018](../../docs/backlog.md#t-018--edge-reconstruction-from-lut-topology)
+in `docs/backlog.md`; the "beats SABR and Omniscale" box is left honestly
+open (see Finding 2). See `edge_debug.slang` (the shader), `edge_reference.py`
+(the CPU model, with the rule's full rationale and independent-design
+provenance in its module docstring), `regenerate_lut_glsl.py` (regenerates
+the shader's embedded LUT constant array from T-014's own generator — see
+Finding 1 for why it's embedded rather than sampled from T-014's texture),
+and `verify_gpu.py`. Reproduce with:
+
+```
+python3 tools/edge_reconstruct/regenerate_lut_glsl.py  # only needed if tools/lut/generate_lut.py changes
+python3 tools/edge_reconstruct/verify_gpu.py
+```
+
+## Result
+
+```
+Numeric parity (shader vs. CPU reference):              PASS
+No regression vs. nearest-neighbour on flat art:         PASS (0 px difference)
+Sub-pixel edge placement beats nearest-neighbour:        PASS (1.051 vs 1.537 mean px error)
+Beats Omniscale at every tested scale (2x-6x):           FAIL — wins 1/5 (see Finding 2)
+Beats SABR:                                              not run (see Finding 3 / NOTICE.md)
+```
+
+## The rule
+
+Independently designed against the generic, published "3x3 topology binary
+neighborhood -> edge geometry" concept `tools/lut/generate_lut.py` (T-014)
+already documents as unpatentable and common to pixel-art scalers
+(`docs/licensing.md` §4) — not derived from reading any GPL/LGPL reference
+implementation.
+
+1. Build the same 3x3 binary topology index T-014's LUT is indexed by:
+   for each of 8 compass neighbors, 1 if its luma differs from the center
+   by more than `ARGUS_EDGE_THRESHOLD` (FR5), 0 otherwise.
+2. Look up `(edge_dir, confidence)` for that index via T-014's own
+   `edge_geometry()` (reused directly, not re-derived, so the two stay in
+   lockstep by construction).
+3. `normal = perpendicular(edge_dir)` — the direction color actually
+   changes across.
+4. `confidence` gates *whether* to blend at all (0 means no usable
+   direction) but not *how much* — see Finding 2 for why.
+5. For an output pixel at fractional sub-position `frac` within its source
+   texel, `dist = dot(frac, normal)`. At the texel center this is always 0
+   (flat-color art is a no-op by construction, not by a special case).
+   Moving toward a texel boundary along the normal blends smoothly toward
+   whichever neighbor sits in that direction, replacing nearest-neighbour's
+   abrupt per-texel jump with a sub-pixel-accurate transition.
+
+Classes (b)/(d) are not this ticket's job (T-019/T-017 already own them);
+class (c) content reaching this rule (already-AA'd gradients) gets the same
+edge-directed blend as class (a) here — a real distinct rule for (c) using
+plain bilinear, as originally sketched, wasn't needed for the acceptance
+criteria this ticket actually gates on, and adding one without a criterion
+to verify it against would be exactly the kind of unverified box-checking
+this project's documentation discipline exists to avoid.
+
+## Finding 1 — a real, reproducible Mesa/llvmpipe miscompilation with a dynamically-indexed second sampler
+
+While first bringing this shader up, it produced near-total-black output
+for almost every pixel — including pixels that should have taken an
+*earlier*, LUT-independent return path (flat/dither/stroke classification).
+Isolated via bisection (rendering intermediate values as color, narrowing
+down which code block introduced the corruption) to a minimal repro:
+
+```glsl
+int idx = 0;
+for (int bit = 0; bit < 8; bit++)
+   if (centerColor.r > float(bit) * 0.01) idx |= (1 << bit);
+vec4 lutTexel = texelFetch(TopologyLUT, ivec2(idx, 0), 0);
+float confidence = lutTexel.b;
+if (confidence > 2.0) { outColor = vec3(1.0, 0.0, 0.0); }  // never true
+```
+
+Even though the `confidence > 2.0` branch is provably unreachable
+(`confidence` is always in `[0,1]` from real LUT data), merely *computing*
+`lutTexel` via a **dynamically-indexed `texelFetch` on a second sampler**
+(anything beyond `Source`) corrupted unrelated values (`centerColor`) later
+in the same shader invocation, for effectively the whole frame — not just
+lanes that would have taken the branch. Confirmed this is specific to
+*dynamic* indexing on a *second* sampler, not to dynamic array indexing in
+general (this project's classifier shaders already dynamically index local
+arrays like `L[25]` without issue) or to having two samplers bound at all
+(a constant-index second-sampler read worked fine). Restructuring the
+shader's control flow (removing early `return`s) did **not** fix it —
+same numbers, byte-for-byte, across multiple different control-flow
+rewrites — which is what pointed at the sampler indexing itself rather
+than a logic bug in this file.
+
+**Workaround**: `edge_debug.slang` embeds T-014's 256-entry LUT as a GLSL
+`const vec3[256]` array (generated by `regenerate_lut_glsl.py` from the
+exact same `generate_lut.py` source T-014's baked texture uses) instead of
+sampling `topology_lut.png`. This only changes how *this pre-fusion debug
+shader* sources the LUT data in *this specific test environment* — T-014's
+acceptance criteria and T-020's real shipped pass should still use the
+texture as designed (a 256-entry `const` array is also a heavier binary
+footprint per shader than one shared texture, which matters less for one
+debug shader but would for a real pass with `#reference`-style texture
+sharing). **This needs re-verification against a real GPU driver** before
+assuming either that the texture path is unsafe in general, or that this
+environment's limitation doesn't matter — llvmpipe is a software
+rasterizer, not representative of mobile GPU driver behavior any more than
+it is of mobile GPU *performance* (the same caveat `docs/backlog-status.md`
+already carries for T-006/T-021).
+
+## Finding 2 — scaling the blend by `confidence` measurably hurt sub-pixel accuracy, and the honest Omniscale comparison is mixed, not a clean win
+
+The first working version scaled the blend amount by `confidence` (`t = ...
+* confidence`), reasoning that a less-clear topology should blend less.
+Measured sub-pixel edge-position error against the diagonal sweep's own
+analytic ground truth (`tools/patterns/generate_patterns.py`'s exact edge
+formula) showed this made the reconstruction *worse* than plain
+nearest-neighbour on this metric. Removing the confidence scaling (keeping
+`confidence > 0` only as a gate on whether to blend at all) fixed this:
+`confidence` is popcount/8 — how much of the local topology is edge-like —
+not a measure of directional certainty, so a real, clean edge with
+confidence well under 1.0 (common; a straight 45-degree staircase never
+reaches confidence 1.0) still deserves a full geometric blend.
+
+With that fix, an *initial single-scale check (4x only)* showed this rule
+beating Omniscale (1.051 vs. 1.110 mean sub-pixel error). Testing across
+every scale RetroArch would realistically run a mobile-lite-class pass at
+(2x-6x) instead of that one scale shows the 4x result does not generalize:
+
+| scale | edge_debug MAE | omniscale MAE | result |
+|---|---|---|---|
+| 2x | 0.532 | 0.313 | loss |
+| 3x | 1.016 | 0.922 | loss |
+| 4x | 1.051 | 1.110 | **win** |
+| 5x | 2.024 | 1.883 | loss |
+| 6x | 2.468 | 2.057 | loss |
+
+**Honest conclusion: this rule does not beat Omniscale on this metric** —
+it wins 1 of 5 tested scales, and loses by a similar margin at the other
+four. Omniscale's own formula (`mix(w1, w3, p.y - p.x + 0.5)` plus a
+continuous `pixel_size`-based anti-aliasing correction — read only for
+comparison-benchmarking purposes, per `reference_shaders/NOTICE.md`, not
+used to inform this file's design) computes a continuous sub-pixel blend
+directly from geometry, rather than snapping to the nearest of 8 compass
+directions the way this design's LUT-topology output does; that snapping
+is the most likely source of the gap, especially visible at shallow angles
+where none of the 8 compass directions align well with the true edge
+tangent, but confirming that specific mechanism (as opposed to some other
+difference) wasn't pursued further — this is flagged as the leading
+hypothesis for whoever picks this back up, not a verified root cause.
+
+**Per this project's documentation discipline, the "beats Omniscale" box
+in `docs/backlog.md` is left unchecked** with this full comparison table,
+rather than reported as passing on the single scale that happened to win.
+
+## Finding 3 — SABR was not run, matching this project's own established position
+
+`docs/licensing.md` clears Omniscale (MIT) for direct execution but puts
+SABR in the clean-room-only bucket (GPLv2-or-later, no permissive subset).
+T-011's own backlog entry already treats even *running* SABR's unmodified
+code for comparison purposes as gated on a human licensing-scope decision,
+not merely deriving from it. This ticket follows that same, already-
+established project position rather than making a new call unilaterally —
+see `reference_shaders/NOTICE.md`.
+
+## What's still open
+
+- The Omniscale comparison gap (Finding 2) — the compass-direction-snapping
+  hypothesis is untested; a continuous-direction blend (interpolating
+  between the two nearest compass neighbors by `normal`'s actual angle,
+  rather than rounding to one) is the natural next thing to try, but wasn't
+  attempted here to keep this ticket's scope to "does the rule work
+  correctly and honestly compare," not "match a mature, specifically-tuned
+  algorithm's exact quality."
+- Class (c) doesn't yet get a reconstruction rule distinct from class (a)
+  (see "The rule" above) — no acceptance criterion here required one.
+- SABR comparison (Finding 3) needs the same human licensing-scope call
+  T-011 already flagged as needed, not a new decision specific to T-018.
+- T-014's texture-based LUT sampling needs re-verification against a real
+  GPU driver (Finding 1) before assuming it's safe in the actual shipped
+  pass (T-020) — this environment's software-rasterizer bug shouldn't be
+  assumed to generalize, but shouldn't be assumed *not* to, either.
+- Same scope boundary as T-019/T-017: this debug shader runs pre-fusion,
+  verified in isolation; T-020 fuses all four classes' rules into one pass.

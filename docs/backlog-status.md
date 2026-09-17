@@ -183,6 +183,46 @@ Picking up directly from the update above in the same session:
   destructive-smoothing alternative it protects real text from — this is argued and evidenced in
   `report.md`, not just asserted.
 
+## Update — 2026-09-17 (continued once more: T-018 built, a real driver bug found and worked around, an honest non-win reported)
+
+- **T-018 (LUT-topology edge reconstruction) is built** — `tools/edge_reconstruct/` (`edge_debug.slang`,
+  `edge_reference.py`, `regenerate_lut_glsl.py`, `verify_gpu.py`, `report.md`), same
+  verified-through-the-real-render-harness pattern as T-015/T-016/T-019/T-017. The rule: for classes
+  (a)/(c), look up T-014's LUT topology/confidence, then blend each output pixel toward whichever
+  source-texel neighbor lies along the estimated edge normal, weighted by the output pixel's sub-texel
+  position — replacing nearest-neighbour's abrupt per-texel jump with a sub-pixel-accurate transition,
+  and reducing to an exact no-op on flat art (confidence 0, no regression by construction, not a special
+  case). Independently designed against T-014's own already-cleared generic LUT concept, not derived
+  from any GPL/LGPL source (`docs/licensing.md`).
+
+- **Found and isolated a real, reproducible Mesa/llvmpipe compiler bug** while bringing this shader up:
+  a *dynamically-indexed* `texelFetch` on a *second* texture sampler (anything beyond `Source`)
+  corrupted unrelated shader state for the whole frame, even inside a branch provably never taken.
+  Root-caused via bisection (rendering intermediate values as color to narrow down the corruption) down
+  to a 6-line minimal repro — see `report.md` Finding 1. Restructuring control flow did not fix it;
+  swapping the LUT from a sampled texture to a generated GLSL `const vec3[256]` array (same 256 values,
+  regenerated from T-014's own `generate_lut.py` by a new script, `regenerate_lut_glsl.py`) did.
+  **This is a workaround scoped to this pre-fusion debug shader in this specific software-rasterizer
+  environment** — T-014's texture design and T-020's real shipped pass should still use the baked
+  texture as intended, and that path needs its own re-verification against a real GPU driver before
+  either trusting or distrusting it based on this environment's bug.
+
+- **Tried a plausible-sounding refinement that measurably made things worse, caught it, and reversed
+  it**: scaling the reconstruction blend amount by LUT confidence (reasoning: less-clear topology should
+  blend less) made sub-pixel edge accuracy *worse* than plain nearest-neighbour. Confidence is
+  popcount/8 — how edge-like the local topology is — not a measure of directional certainty, so a real,
+  clean diagonal edge (which commonly has confidence well under 1.0) still deserves a full geometric
+  blend. Removed the scaling; fixed it (report.md Finding 2).
+
+- **Reported an honest, non-passing result rather than a favorable cherry-pick**: an initial check at a
+  single scale (4x) showed this rule beating Omniscale (1.051 vs. 1.110 mean sub-pixel error against the
+  diagonal sweep's own analytic ground truth). Testing across every scale this tier would realistically
+  run at (2x-6x) instead of just that one showed it only wins 1 of 5 — Omniscale wins by a similar
+  margin at the other four. The "beats SABR and Omniscale" backlog box is left **unchecked** with the
+  full per-scale table in `report.md`, rather than reported as passing on the one scale that happened to
+  win. SABR itself was not run at all, consistent with T-011's own already-established position that
+  even *running* SABR's unmodified code for comparison is gated on a human licensing-scope decision.
+
 ## Completed this session
 
 | Ticket | What was built | Where |
@@ -261,35 +301,38 @@ copyleft half of T-011) needs a physical handheld or a human curation/licensing 
 that set is a tooling gap.
 
 **Next up on the critical path** (`T-001 → T-004 → T-016 → T-020 → T-023 → T-025 → T-033`): T-001,
-T-004, T-015, T-016, T-019, and now **T-017** are done (see "Completed this session" above, the
-README, and each ticket's own `tools/*/report.md`). **T-020 (fuse into a single shipped pass)** is
-next on the critical path — with T-017 and T-019 both done, **T-018 (edge reconstruction from LUT
-topology) is the last remaining blocker**, and it has no further Phase 1 dependency beyond what's
-already done (T-014's LUT, T-016's classifier). It's also the largest of the three (L-size), so it's
-worth budgeting more time than T-017/T-019 took. **T-041** (new ticket: class-(d) classifier
-separability, opened out of T-017's report) is *not* a T-020 blocker per T-017's report's own
-argument (nearest-preserving reconstruction is a safe fallback even when misrouted) but is real,
-evidenced open work that shouldn't be forgotten once T-020 ships — see its backlog entry for
-candidate approaches.
+T-004, T-015, T-016, T-017, T-018, and T-019 are all now built (see "Completed this session" above,
+the README, and each ticket's own `tools/*/report.md`). **T-020 (fuse into a single shipped pass) has
+no remaining Phase 1 ticket blocking it** — all three per-class reconstruction rules it needs
+(T-017/T-018/T-019) exist and are individually verified. Two things are worth carrying into T-020
+rather than treating as closed: **T-041** (class-(d) classifier separability, opened out of T-017's
+report) and **T-018's honest non-win against Omniscale** (report.md Finding 2 — the compass-direction-
+snapping hypothesis for the gap is untested and is the natural first thing to try if T-020's fused
+result doesn't clear the Phase 1 exit bar's perceptual comparison, T-022). Neither blocks starting
+T-020: T-017's report argues nearest-preserving reconstruction is a safe fallback even when misrouted,
+and T-018's rule is verified correct and better than nearest-neighbour even though it isn't yet proven
+to beat Omniscale specifically.
 
-Recommended sequencing per ticket, now demonstrated four times (T-015/T-016, T-019, T-017): implement
-against the passthrough skeleton, run `tools/compile_gate/compile_check.py` for portability, verify
-against a `tools/*/verify_gpu.py`-style CPU-reference check through the actual render harness (not
-just an offline CPU model) where the ticket has a numeric bar, then
+Recommended sequencing per ticket, now demonstrated five times (T-015/T-016, T-019, T-017, T-018):
+implement against the passthrough skeleton, run `tools/compile_gate/compile_check.py` for portability,
+verify against a `tools/*/verify_gpu.py`-style CPU-reference check through the actual render harness
+(not just an offline CPU model) where the ticket has a numeric bar, then
 `tools/render_harness/run_harness.py --update-goldens` once the rendered output is visually confirmed
 correct (goldens are reviewable diffs in the commit, per T-003's third acceptance box — never update
-them to paper over an unreviewed change) — though note T-015/T-016/T-019/T-017's debug/test shaders
-were each verified through their own dedicated `verify_gpu.py` instead of the golden set, since
-they're pre-fusion test shaders, not shipped passes; T-020 is what actually needs new goldens. T-040's
-legacy pack should get the same treatment in parallel as each tier lands, not written after the fact
-from finished slang passes. Watch for the same class of environment-assumption bug found twice
-already this session (the GLES-300-vs-310 mismatch, the CI globstar gap): re-check tool assumptions
-against what's actually true in this environment rather than trusting an earlier comment, especially
-anywhere a "target" or "floor" is hardcoded as a literal. Also watch for the pattern T-019 and T-017
-both hit — a missing corpus category (T-019) and an unachievable acceptance threshold (T-017) — check
-what the acceptance criteria actually need, and whether the current tooling can actually deliver it,
-before assuming either is already covered; when it turns out not to be, say so and open new tracked
-scope (T-040, T-041) rather than quietly loosening the bar.
+them to paper over an unreviewed change) — though note T-015/T-016/T-019/T-017/T-018's debug/test
+shaders were each verified through their own dedicated `verify_gpu.py` instead of the golden set,
+since they're pre-fusion test shaders, not shipped passes; T-020 is what actually needs new goldens.
+T-040's legacy pack should get the same treatment in parallel as each tier lands, not written after
+the fact from finished slang passes. Watch for the same class of environment-assumption bug found
+multiple times this session (GLES-300-vs-310, the CI globstar gap, and now T-018's dynamically-indexed
+second-sampler Mesa/llvmpipe miscompilation — report.md Finding 1): re-check tool and driver
+assumptions against what's actually true in this environment rather than trusting an earlier comment
+or assuming a software rasterizer behaves like a real GPU driver. Also watch for the pattern T-019,
+T-017, and T-018 all hit in different forms — a missing corpus category (T-019), an unachievable
+acceptance threshold (T-017), and a result that only looked like a win at one cherry-picked scale
+(T-018) — check what the acceptance criteria actually need, test broadly enough to know whether the
+tooling/algorithm can actually deliver it, and when it turns out not to, say so and open new tracked
+scope (T-040, T-041) rather than quietly loosening the bar or reporting the favorable case alone.
 
 **Still open on T-003 itself**, tracked as unchecked in its backlog entry rather than left implicit:
 GL-desktop execution (same EGL device, different API binding — small lift, not yet wired), a headless

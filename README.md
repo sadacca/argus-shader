@@ -89,13 +89,23 @@ and T-010 both flagged this risk and deferred it to exactly this point. Tracked 
 **T-041** rather than papered over — T-017's reconstruction rule itself is unaffected (nearest-
 preserving reconstruction is a safe fallback even when misrouted; see `tools/text_protect/report.md`).
 
+**T-018** (LUT-topology edge reconstruction, `tools/edge_reconstruct/`) is also built. Bringing it up
+surfaced a real, reproducible Mesa/llvmpipe compiler bug — a dynamically-indexed `texelFetch` on a
+second texture sampler corrupted unrelated shader state — isolated via bisection and worked around for
+this pre-fusion debug shader (embedding the LUT as a generated GLSL constant array instead of sampling
+its texture; the real shipped pass should still use the texture as T-014 designed, re-verified against
+a real GPU driver). It also reports an honest non-result rather than a favorable cherry-pick: an
+initial single-scale check showed this rule beating Omniscale on sub-pixel edge accuracy, but testing
+across every scale this tier would realistically run at (2x-6x) shows it only wins 1 of 5 — that
+acceptance box is left open with the full comparison table, not checked off.
+
 Still genuinely blocked — real handheld bring-up (T-006), a real-game content corpus (T-007), and the
 copyleft half of cataloging existing shaders' failure modes (T-011) — need a physical reference device
 or a human call on licensing/content sourcing, not a tooling gap. Each is documented in
-`docs/backlog-status.md` with what specifically would unblock it. With T-015/T-016/T-017/T-019 done,
-**T-018** (edge reconstruction from LUT topology) is the last remaining blocker on **T-020** (fuse
-into the single shipped mobile-lite pass, critical path) — see `docs/backlog-status.md` for
-recommended sequencing.
+`docs/backlog-status.md` with what specifically would unblock it. With T-015/T-016/T-017/T-018/T-019
+all done, **T-020** (fuse into the single shipped mobile-lite pass, critical path) has no remaining
+Phase 1 ticket blocking it — see `docs/backlog-status.md` for what's still worth carrying forward into
+it (T-018's Omniscale gap, T-041's classifier separability) even though neither blocks starting.
 
 ## Project structure
 
@@ -115,6 +125,8 @@ tools/
   dither_reconstruct/    T-019: dither-preservation reconstruction rule + verify + report
   text_protect/          T-017: text/glyph protection reconstruction rule + verify + report
                           (also surfaced T-041, a new open classifier-separability ticket)
+  edge_reconstruct/      T-018: LUT-topology edge reconstruction + verify + report
+                          (reference_shaders/: vendored MIT Omniscale, comparison-only)
   patterns/               T-008/T-009/T-010: synthetic test corpus generators
   lut/                    T-014: 3x3 topology LUT generator + invariant tests
   ab_compare/             T-012: perceptual A/B comparison harness

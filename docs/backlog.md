@@ -310,9 +310,27 @@ flagged in advance and deferred to this point; T-017 is where it stopped being d
 ### T-018 — Edge reconstruction from LUT topology
 **Track A · L · depends on T-014, T-016, T-001**
 Reconstruct edges/curves for classes (a) and (c) using LUT-supplied geometry.
-- [ ] Beats SABR and Omniscale on the diagonal sweep (T-008) at matched output resolution
-- [ ] No regression versus nearest-neighbour on flat-color sprite art
-- [ ] Sub-pixel edge placement preserved — verified against integer-scale reference
+**Built 2026-09-17**: `tools/edge_reconstruct/` (`edge_debug.slang`, `edge_reference.py`,
+`regenerate_lut_glsl.py`, `verify_gpu.py`, `report.md`). Same debug-shader-verified-through-the-
+real-render-harness pattern as T-015/T-016/T-019/T-017. Building this surfaced a real, reproducible
+Mesa/llvmpipe compiler bug (dynamically-indexed `texelFetch` on a second sampler corrupts unrelated
+shader state) — worked around for this pre-fusion debug shader by embedding T-014's LUT as a
+generated GLSL constant array instead of sampling its texture; see `report.md` Finding 1 for the full
+isolation and why T-020's real shipped pass should still use T-014's texture as designed, re-verified
+against a real GPU driver. Also found that scaling the reconstruction blend by LUT confidence
+(plausible-sounding, tried first) measurably *hurt* sub-pixel accuracy — removed, see Finding 2.
+- [x] No regression versus nearest-neighbour on flat-color sprite art — measured 0px difference on
+      `checkerboard_transparency`'s flat background region at 3x scale (`report.md`)
+- [x] Sub-pixel edge placement preserved — verified against integer-scale reference — mean sub-pixel
+      edge-position error against the diagonal sweep's own analytic ground truth: 1.051px vs.
+      nearest-neighbour's 1.537px (lower is better) at 4x scale (`report.md`)
+- [ ] Beats SABR and Omniscale on the diagonal sweep (T-008) at matched output resolution —
+      **Omniscale: measured honestly across every scale RetroArch would realistically run this tier at
+      (2x-6x), not just one — wins 1 of 5 tested scales, loses by a similar margin at the other four
+      (`report.md` Finding 2's full table). Not a threshold this ticket can claim passing.** SABR: not
+      run at all — this project's own T-011 backlog entry already treats even *running* SABR's
+      unmodified code for comparison as gated on a human licensing-scope decision, not a new call this
+      ticket makes unilaterally (see `reference_shaders/NOTICE.md`).
 
 ### T-019 — Dither preservation rule
 **Track A · M · depends on T-016**
