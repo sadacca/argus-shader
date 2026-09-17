@@ -127,6 +127,17 @@ change). None of these block T-020 or UAT. **T-022** (Phase 1 exit validation �
 bandwidth, frame time, false-positive-rate threshold) is the next item on the critical path and has
 explicitly not been run yet; T-040's legacy-pack port of this fused logic also remains open.
 
+**Update, 2026-09-17 (continued once more): a real comparison set against Omniscale, with a
+documented glyph-preservation win.** `tools/comparison/` renders the full synthetic corpus through
+argus-mobile-lite, Omniscale, and nearest-neighbour at matched scale (T-011). Headline result: on
+glyph content, argus-mobile-lite is pixel-identical to nearest-neighbour (T-017's text protection
+working as designed) while Omniscale visibly rounds glyph corners — the largest, most visually clear
+gap in the set. ScaleFX (MIT, cleared) is vendored but not executable yet — it's a 6-pass filter
+chain and this project's render harness is single-pass only. xBRZ/SABR/HQx were deliberately not
+vendored or run at all — copyleft licenses with no permissive subset for execution, and T-011 already
+flags that as a call for the project owner to make, not one to decide unilaterally. See
+`tools/comparison/report.md` for the full breakdown.
+
 ## Project structure
 
 ```

@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# T-011 comparison renders — regenerate with tools/comparison/generate_baselines.py
+tools/comparison/renders/

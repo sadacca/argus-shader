@@ -386,3 +386,34 @@ by running the harness's rendered output directly) — this is the "shader ready
 frame time, false-positive-rate threshold) has explicitly not been run** and is the next item on the
 critical path; T-020's checks here are necessary but not sufficient for T-022's own bar. T-040's
 legacy port of this fused logic also remains open, tracked but not blocking.
+
+## Update — 2026-09-17 (continued once more: T-011 partially built — a real comparison set against Omniscale, with a documented glyph-preservation win)
+
+Off the back of T-020 landing, built `tools/comparison/` (`generate_baselines.py`, `report.md`):
+renders the full synthetic corpus through **argus-mobile-lite** (T-020's shipped pass), **Omniscale**,
+and **nearest-neighbour** (the honest control) at matched 4x scale, into directories ready for
+`tools/ab_compare/index.html` (T-012) or programmatic diffing.
+
+**Headline finding**: on `glyph_sheet` content, argus-mobile-lite is pixel-identical to
+nearest-neighbour (T-017's text/glyph protection working exactly as designed) while Omniscale
+visibly rounds and anti-aliases glyph corners — the largest gap in the comparison table (9.721 vs.
+0.000 mean-absolute-difference-from-nearest-neighbour) and a clear, visually legible result, not just
+a number. The diagonal-edge sub-pixel accuracy comparison against Omniscale is not recomputed —
+`tools/fusion/verify_gpu.py` already proves fusion didn't change T-018's edge-reconstruction output,
+so T-018's existing 2x-6x win/loss table (wins 1 of 5) is cited directly rather than re-derived.
+
+**Two things intentionally not done, both flagged rather than silently skipped:**
+1. **ScaleFX** (MIT, cleared under T-001) is vendored (`tools/comparison/reference_shaders/scalefx/`)
+   but not executed — it's a 6-pass filter chain with named cross-pass texture aliasing, and this
+   project's render harness is single-pass only. Running it would need a real multi-pass filter-chain
+   sequencer (the same category of work Phase 2's T-023/T-024 will eventually need), which wasn't
+   improvised here — an unverified sequencer risks reporting misleading comparison numbers, worse than
+   not having them.
+2. **xBRZ/SABR/HQx** were not vendored or run at all — all three are copyleft with no permissive
+   subset for direct execution, and this is explicitly the kind of licensing-scope call T-011's own
+   backlog entry (and T-018's report, for SABR specifically) already flags as needing the project
+   owner's input, not a call to make unilaterally. **Asked the user directly** whether to make that
+   call now (accept copyleft obligations on comparison-only runs) or keep characterizing those three
+   from published documentation/screenshots instead, per T-011's own already-recommended fallback.
+
+T-011 remains open (2 of 5 baselines actually run), tracked honestly rather than closed early.

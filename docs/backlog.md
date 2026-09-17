@@ -136,14 +136,19 @@ rewards over-triggering — the heuristic would appear to succeed by misclassify
 
 ### T-011 — Catalog existing-shader failure cases
 **Track C · M · depends on T-007, T-008, T-012**
-**Status: partially unblocked 2026-09-17 — render backend available, so ScaleFX/Omniscale (MIT,
-cleared under T-001) can run now; xBRZ/SABR/HQx execution stays gated on a licensing-scope call, and
-T-007's real-game corpus is still needed for full coverage. See `docs/backlog-status.md`.**
-Run xBRZ, ScaleFX, SABR, Omniscale, and nearest-neighbour across the corpus; document where each
-fails. Establishes the specific gaps this project claims to close (§1, §4).
-- [ ] Every corpus item rendered through all five baselines at matched output resolution
-- [ ] Failure modes catalogued per shader with example crops
-- [ ] Nearest-neighbour included as the honest control (P6)
+**Status: partially built 2026-09-17** — `tools/comparison/` (`generate_baselines.py`, `report.md`)
+renders the full synthetic corpus through argus-mobile-lite (T-020), Omniscale, and
+nearest-neighbour at matched scale. ScaleFX is vendored (MIT, cleared) but not yet executable — needs
+a multi-pass filter-chain sequencer this project doesn't have (see `tools/comparison/report.md`).
+xBRZ/SABR/HQx execution remains gated on a licensing-scope call. T-007's real-game corpus is still
+needed for full coverage. See `docs/backlog-status.md`.
+- [ ] Every corpus item rendered through all five baselines at matched output resolution — 2 of 5
+      done (nearest-neighbour, Omniscale); ScaleFX vendored but blocked on multi-pass infra;
+      xBRZ/SABR/HQx blocked on a licensing-scope decision
+- [x] Failure modes catalogued per shader with example crops — see `tools/comparison/report.md`'s
+      glyph-preservation finding (Omniscale visibly rounds/smooths protected glyph corners that
+      argus-mobile-lite leaves pixel-identical to nearest-neighbour)
+- [x] Nearest-neighbour included as the honest control (P6)
 
 ### T-012 — Perceptual A/B comparison harness
 **Track B · S**
