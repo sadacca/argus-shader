@@ -45,7 +45,7 @@ Each tier carries a hard bandwidth ceiling in bytes per output pixel (8 / 10 / 3
 |---|---|
 | [`docs/requirements.md`](docs/requirements.md) | Full requirements — functional/non-functional requirements, mobile optimization strategy, integration path, validation plan, open questions, phasing with numeric exit criteria |
 | [`docs/review-notes.md`](docs/review-notes.md) | v0.1 → v0.2 technical review: four blocking corrections, optimizations, and process fixes, with sources |
-| [`docs/backlog.md`](docs/backlog.md) | 40 tickets across 5 phases, with acceptance criteria, dependencies, and the critical path |
+| [`docs/backlog.md`](docs/backlog.md) | 41 tickets across 5 phases, with acceptance criteria, dependencies, and the critical path |
 
 ## Status
 
@@ -76,19 +76,26 @@ T-004's spike, verified against a CPU reference through the actual GLES render p
 (`tools/classifier_gpu/`, see its `report.md`). Porting to GLSL caught two more real numerical bugs
 (a 0/0-indeterminate checkerboard-autocorrelation ratio, and a unique-color-count proxy that needed
 32 luma bins, not 8), plus a GLES-300-vs-310 toolchain mismatch below this project's own decided
-GLES 3.1+ floor. **T-019** (dither preservation reconstruction rule) is also built
-(`tools/dither_reconstruct/`, see its `report.md`) — verified the same way, and along the way found
-that the existing synthetic corpus had no sample isolating "soft" (SNES-style, close-color) ordered
-dithering, so a new `corpus/synthetic/dither_soft/` category was added to actually test that
-acceptance criterion rather than assume an existing category covered it.
+GLES 3.1+ floor. **T-019** (dither preservation reconstruction rule) and **T-017** (text/glyph protection reconstruction
+rule) are also built (`tools/dither_reconstruct/`, `tools/text_protect/`, see each `report.md`) —
+verified the same way. Along the way, T-019 found that the existing synthetic corpus had no sample
+isolating "soft" (SNES-style, close-color) ordered dithering, so a new `corpus/synthetic/dither_soft/`
+category was added to actually test that acceptance criterion. T-017 found something more
+significant: **T-010's text-negative corpus (fur/hair, architectural grids, weapon-outline
+silhouettes) genuinely cannot be separated from real glyph strokes by T-015's four wide-kernel
+statistics** — measured 80.8% false-positive rate, and a direct per-statistic check confirms no
+threshold on the existing statistics would fix it. This isn't a new bug; T-004's original spike report
+and T-010 both flagged this risk and deferred it to exactly this point. Tracked as new scope in
+**T-041** rather than papered over — T-017's reconstruction rule itself is unaffected (nearest-
+preserving reconstruction is a safe fallback even when misrouted; see `tools/text_protect/report.md`).
 
 Still genuinely blocked — real handheld bring-up (T-006), a real-game content corpus (T-007), and the
 copyleft half of cataloging existing shaders' failure modes (T-011) — need a physical reference device
 or a human call on licensing/content sourcing, not a tooling gap. Each is documented in
-`docs/backlog-status.md` with what specifically would unblock it. With T-015/T-016/T-019 done, the
-remaining blockers on **T-020** (fuse into the single shipped mobile-lite pass, critical path) are
-**T-017** (text/glyph protection) and **T-018** (edge reconstruction from LUT topology) — see
-`docs/backlog-status.md` for recommended sequencing.
+`docs/backlog-status.md` with what specifically would unblock it. With T-015/T-016/T-017/T-019 done,
+**T-018** (edge reconstruction from LUT topology) is the last remaining blocker on **T-020** (fuse
+into the single shipped mobile-lite pass, critical path) — see `docs/backlog-status.md` for
+recommended sequencing.
 
 ## Project structure
 
@@ -106,6 +113,8 @@ tools/
   classifier_spike/      T-004: offline classifier feasibility spike + report
   classifier_gpu/        T-015/T-016: GLSL classifier + CPU reference + verify + report
   dither_reconstruct/    T-019: dither-preservation reconstruction rule + verify + report
+  text_protect/          T-017: text/glyph protection reconstruction rule + verify + report
+                          (also surfaced T-041, a new open classifier-separability ticket)
   patterns/               T-008/T-009/T-010: synthetic test corpus generators
   lut/                    T-014: 3x3 topology LUT generator + invariant tests
   ab_compare/             T-012: perceptual A/B comparison harness

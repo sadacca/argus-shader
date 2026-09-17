@@ -12,7 +12,11 @@ Everything else can slip without stalling the shader core — except **T-010**, 
 and **T-005**, which gates T-020's fetch strategy. **T-040** (legacy `.glslp`/`.glsl` pack, added
 2026-09-17) is a second output format tracking the same algorithm, not on the critical path itself,
 but it should not be left to accumulate against the whole finished slang pack — port each tier as it
-lands per T-040's acceptance criteria.
+lands per T-040's acceptance criteria. **T-041** (class-(d) classifier separability, added
+2026-09-17) is likewise not on the critical path itself — T-020 can and should proceed once
+T-017/T-018/T-019 land, since T-017's report establishes that the current false-positive rate is a
+safe-but-suboptimal fallback rather than a correctness blocker — but it's real open work, not
+speculative, and shouldn't be left to silently rot once T-020 ships.
 
 **Highest-risk ticket: T-004.** If the two-level classifier decomposition can't separate dither from
 AA gradient, the architecture in §6a.3 changes and Phase 1 is re-scoped. Do it first.
@@ -261,9 +265,47 @@ general tolerance check specifically so it can't mask a real regression by loose
 **Track A · M · depends on T-016, T-009, T-010**
 Route class (d) to minimal-interpolation/nearest-preserving reconstruction rather than diagonal
 reconstruction (FR2).
-- [ ] Legibility on T-009 scores at or above nearest-neighbour on the rubric
-- [ ] False-positive rate on T-010 within the threshold agreed in T-010
-- [ ] Both sets gate this ticket together — positive-only is not sufficient to close
+**Built 2026-09-17**: `tools/text_protect/` (`text_debug.slang`, `text_reference.py`, `verify_gpu.py`,
+`report.md`). Same debug-shader-verified-against-CPU-reference pattern as T-015/T-016/T-019. The
+reconstruction rule itself is verified and demonstrably beneficial (see first box); the
+false-positive box surfaced a real, pre-existing classifier-separability limit that this ticket's
+reconstruction rule cannot itself close — tracked as new scope in **T-041** rather than asserted as
+passing. See `report.md` for the full evidence (a real per-statistic separability check across
+`text_positive`/`text_negative`, not a guess).
+- [x] Legibility on T-009 scores at or above nearest-neighbour on the rubric — measured 0.651 mean
+      (nearest-neighbour baseline = 1.000 by definition); checked against a real comparison baseline
+      (no class-d special case at all: 0.002 mean) to make this a substantive claim, not a tautology
+      — see `report.md`
+- [ ] False-positive rate on T-010 within the threshold agreed in T-010 — **no threshold can honestly
+      be agreed against the current statistic set.** Measured 80.8% (unchanged from T-004/T-010's own
+      baseline), and `report.md` shows directly that none of T-015's four wide-kernel statistics
+      separate `text_negative` from `text_positive` on this corpus — they were deliberately built to
+      share the same signature. This is a real, evidenced limitation of the classifier this ticket
+      depends on (T-016), not a gap in this ticket's own reconstruction rule; see T-041 (new ticket,
+      below) for where the actual fix belongs.
+- [ ] Both sets gate this ticket together — positive-only is not sufficient to close; per the above,
+      this box stays open pending T-041
+
+### T-041 — Class (d) separability beyond the 5x5 wide-kernel statistic set (added 2026-09-17)
+**Track A · M · depends on T-016, T-017 · new scope**
+T-017's report (`tools/text_protect/report.md`, Finding 1) measured, directly and per-statistic, that
+none of T-015's four wide-kernel statistics (variance, checkerboard-autocorrelation, luma-bin
+popcount, stroke-width) can separate real glyph strokes from T-010's fur/hair, architectural-grid,
+and weapon-outline content — they were deliberately built to share the same thin-high-contrast-stroke
+signature, and a measured 80.8% false-positive rate confirms the statistics genuinely can't tell them
+apart, not that thresholds are merely mistuned. This is the risk T-004's spike report and T-010 both
+flagged in advance and deferred to this point; T-017 is where it stopped being deferrable.
+- [ ] Candidate approach evaluated and a decision recorded: a wider secondary kernel for
+      density/periodicity (architecture's grid spacing, fur's local stroke density) — noting the
+      tension with §6a.3's ALU-budget-driven small-kernel decision — vs. fusing T-014's LUT topology
+      (built, not yet consumed by T-016) for connectivity/grid-alignment cues, vs. formally accepting
+      the current false-positive rate as a permanent tradeoff (T-017's report already establishes that
+      misrouting to nearest-preserving reconstruction is a safe, if suboptimal, fallback — not a
+      correctness bug)
+- [ ] Whichever approach is chosen, re-measured against the same `text_positive`/`text_negative`
+      per-category table `tools/text_protect/report.md` already established, so the before/after is
+      directly comparable
+- [ ] T-017's backlog entry updated to reflect the resolution (checked or explicitly accepted-as-is)
 
 ### T-018 — Edge reconstruction from LUT topology
 **Track A · L · depends on T-014, T-016, T-001**

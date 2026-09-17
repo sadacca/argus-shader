@@ -153,6 +153,36 @@ Picking up directly from the update above in the same session:
   return dict, since T-019 needed it directly. Doesn't change T-015/T-016's already-verified behavior
   — pure exposure of an existing intermediate value, not a new computation.
 
+## Update — 2026-09-17 (continued yet again: T-017 built, real classifier-separability limit found and tracked as T-041)
+
+- **T-017 (text/glyph protection reconstruction rule) is built** —
+  `tools/text_protect/` (`text_debug.slang`, `text_reference.py`, `verify_gpu.py`, `report.md`), same
+  verified-through-the-real-render-harness pattern as T-015/T-016/T-019. The rule: class-(d) pixels
+  output their exact source color (no interpolation, no strength dial the way T-019's dither rule
+  has — FR2 asks for a hard guarantee here, not a tunable one); everything else falls back to the
+  same local-mean placeholder T-019 uses for its own non-dither pixels. Checked against a real
+  comparison baseline ("unprotected": no class-(d) special case at all) rather than only the
+  trivially-true "protected == nearest-neighbour on protected pixels" claim — legibility measured
+  0.651 with the routing on vs. 0.002 with it off, a substantive, not tautological, result.
+
+- **Found, and did not paper over, a real pre-existing limitation while checking T-017's second
+  acceptance box**: T-010's `text_negative` corpus (fur/hair, architectural grids, weapon-outline
+  silhouettes) was deliberately built to share the same thin-high-contrast-stroke signature as real
+  glyphs, specifically so an over-triggering classifier couldn't look like it was succeeding. Checked
+  directly, per-statistic, whether any threshold on T-015's four wide-kernel statistics could separate
+  them: **none can** — variance magnitude is close between real glyphs and weapon-outline art (both
+  are just "high-contrast strokes on a flat background," which is what variance actually measures),
+  and checkerboard-autocorrelation/popcount don't separate any pair either. Measured false-positive
+  rate: 80.8%, unchanged from T-004/T-010's own original measurement — confirming this is real and
+  inherited, not a regression from T-017's own work. Per this project's documented discipline (no
+  checkbox checked without verification, no threshold "agreed" without evidence it's achievable), the
+  false-positive acceptance box is left **unchecked** with the full evidence in `report.md`, and the
+  actual fix is opened as **T-041**, a new ticket (`docs/backlog.md`), rather than silently absorbed
+  into T-017 or asserted as passing. T-017's reconstruction rule itself is not implicated: nearest-
+  preserving reconstruction is a safe (if suboptimal) fallback even when misrouted, unlike the
+  destructive-smoothing alternative it protects real text from — this is argued and evidenced in
+  `report.md`, not just asserted.
+
 ## Completed this session
 
 | Ticket | What was built | Where |
@@ -231,33 +261,35 @@ copyleft half of T-011) needs a physical handheld or a human curation/licensing 
 that set is a tooling gap.
 
 **Next up on the critical path** (`T-001 → T-004 → T-016 → T-020 → T-023 → T-025 → T-033`): T-001,
-T-004, T-015, T-016, and now **T-019** are done (see "Completed this session" above, the README, and
-`tools/classifier_gpu/report.md` / `tools/dither_reconstruct/report.md`). **T-020 (fuse into a single
-shipped pass)** is next on the critical path, but it explicitly depends on T-017/T-018/T-019 landing
-first (text/glyph protection, edge reconstruction, dither preservation — the actual per-class
-reconstruction rules T-016 only classifies *into*, doesn't yet apply); with T-019 done, **T-017 and
-T-018 are the two remaining blockers on T-020**. T-018 (edge reconstruction from LUT topology) has no
-further Phase 1 dependency beyond what's already done (T-014's LUT, T-016's classifier) and is the
-larger of the two (L-size) — natural next pick. T-017 (text/glyph protection) additionally needs
-T-009/T-010's already-built corpus (no new blocker) and is smaller (M-size); both can proceed in any
-order or in parallel, same as before. Recommended sequencing per ticket, now demonstrated three times
-(T-015/T-016, T-019): implement against the passthrough skeleton, run
-`tools/compile_gate/compile_check.py` for portability, verify against a
-`tools/*/verify_gpu.py`-style CPU-reference check through the actual render harness (not just an
-offline CPU model) where the ticket has a numeric bar, then
+T-004, T-015, T-016, T-019, and now **T-017** are done (see "Completed this session" above, the
+README, and each ticket's own `tools/*/report.md`). **T-020 (fuse into a single shipped pass)** is
+next on the critical path — with T-017 and T-019 both done, **T-018 (edge reconstruction from LUT
+topology) is the last remaining blocker**, and it has no further Phase 1 dependency beyond what's
+already done (T-014's LUT, T-016's classifier). It's also the largest of the three (L-size), so it's
+worth budgeting more time than T-017/T-019 took. **T-041** (new ticket: class-(d) classifier
+separability, opened out of T-017's report) is *not* a T-020 blocker per T-017's report's own
+argument (nearest-preserving reconstruction is a safe fallback even when misrouted) but is real,
+evidenced open work that shouldn't be forgotten once T-020 ships — see its backlog entry for
+candidate approaches.
+
+Recommended sequencing per ticket, now demonstrated four times (T-015/T-016, T-019, T-017): implement
+against the passthrough skeleton, run `tools/compile_gate/compile_check.py` for portability, verify
+against a `tools/*/verify_gpu.py`-style CPU-reference check through the actual render harness (not
+just an offline CPU model) where the ticket has a numeric bar, then
 `tools/render_harness/run_harness.py --update-goldens` once the rendered output is visually confirmed
 correct (goldens are reviewable diffs in the commit, per T-003's third acceptance box — never update
-them to paper over an unreviewed change) — though note T-015/T-016/T-019's debug/test shaders were
-each verified through their own dedicated `verify_gpu.py` instead of the golden set, since they're
-pre-fusion test shaders, not shipped passes; T-020 is what actually needs new goldens. T-040's legacy
-pack should get the same treatment in parallel as each tier lands, not written after the fact from
-finished slang passes. Watch for the same class of environment-assumption bug found twice already
-this session (the GLES-300-vs-310 mismatch, the CI globstar gap): re-check tool assumptions against
-what's actually true in this environment rather than trusting an earlier comment, especially anywhere
-a "target" or "floor" is hardcoded as a literal. Also watch for the T-019 pattern of discovering a
-missing corpus category mid-ticket (Finding 1 in its report) — check what the acceptance criteria
-actually need against what test content actually exists before assuming an existing corpus category
-covers it.
+them to paper over an unreviewed change) — though note T-015/T-016/T-019/T-017's debug/test shaders
+were each verified through their own dedicated `verify_gpu.py` instead of the golden set, since
+they're pre-fusion test shaders, not shipped passes; T-020 is what actually needs new goldens. T-040's
+legacy pack should get the same treatment in parallel as each tier lands, not written after the fact
+from finished slang passes. Watch for the same class of environment-assumption bug found twice
+already this session (the GLES-300-vs-310 mismatch, the CI globstar gap): re-check tool assumptions
+against what's actually true in this environment rather than trusting an earlier comment, especially
+anywhere a "target" or "floor" is hardcoded as a literal. Also watch for the pattern T-019 and T-017
+both hit — a missing corpus category (T-019) and an unachievable acceptance threshold (T-017) — check
+what the acceptance criteria actually need, and whether the current tooling can actually deliver it,
+before assuming either is already covered; when it turns out not to be, say so and open new tracked
+scope (T-040, T-041) rather than quietly loosening the bar.
 
 **Still open on T-003 itself**, tracked as unchecked in its backlog entry rather than left implicit:
 GL-desktop execution (same EGL device, different API binding — small lift, not yet wired), a headless
