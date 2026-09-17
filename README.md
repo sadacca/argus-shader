@@ -59,12 +59,23 @@ decision (T-005), the synthetic test corpus (T-008/T-009/T-010), the perceptual 
 (T-012), and the baked 3×3 topology LUT (T-014). See
 [`docs/backlog-status.md`](docs/backlog-status.md) for the full rundown.
 
-What's left in Phase 0 — the golden-image render harness (T-003), real handheld bring-up (T-006),
-a real-game content corpus (T-007), and cataloging existing shaders' failure modes (T-011) — all
-need something this build pass couldn't provide by itself: a GPU-capable environment, physical
-reference hardware, or a human call on which homebrew titles to include. Each is documented in
-`docs/backlog-status.md` with what specifically would unblock it. No shader implementation
-(Phase 1, T-013 onward) has started yet.
+**Update, 2026-09-17:** this environment turned out to have a working software render backend after
+all (Mesa llvmpipe/Lavapipe via headless EGL — no `/dev/dri` needed), which unblocked and then built
+**T-003**, the golden-image regression harness (`tools/render_harness/`, 55 goldens seeded). Phase 1
+has also started: root preset skeletons exist for both the primary `.slangp`/`.slang` pack (**T-013**)
+and a newly-scoped parallel legacy `.glslp`/`.glsl` pack for pre-slang RetroArch installs (**T-040**),
+both passthrough passes, both compiling clean and rendering byte-identical to their source through
+the new harness. See `docs/backlog-status.md`'s 2026-09-17 update entries for what was actually built
+and two real bugs the new tooling caught along the way (a GLSL ES precision-declaration ordering bug
+in the legacy skeleton, and a silently-broken CI glob that meant shipped shaders were never actually
+being compile-gated).
+
+Still genuinely blocked — real handheld bring-up (T-006), a real-game content corpus (T-007), and the
+copyleft half of cataloging existing shaders' failure modes (T-011) — need a physical reference device
+or a human call on licensing/content sourcing, not a tooling gap. Each is documented in
+`docs/backlog-status.md` with what specifically would unblock it. The next unstarted ticket on the
+critical path is **T-016** (region classifier, FR2) — see `docs/backlog-status.md` for recommended
+sequencing now that the render harness exists to check against.
 
 ## Project structure
 
@@ -77,13 +88,19 @@ docs/
   licensing.md           T-001: license posture for reference shaders
   gles-floor.md          T-005: target-device GLES floor decision
 tools/
-  compile_gate/          T-002: stub .slang pass + cross-backend compile check
+  compile_gate/          T-002: stub .slang pass + cross-backend compile check;
+                          compile_check_legacy.py (T-040): legacy .glsl compile check
   classifier_spike/      T-004: offline classifier feasibility spike + report
   patterns/               T-008/T-009/T-010: synthetic test corpus generators
   lut/                    T-014: 3x3 topology LUT generator + invariant tests
   ab_compare/             T-012: perceptual A/B comparison harness
+  render_harness/         T-003: headless EGL/GLES render + golden-image diff/update
+                          (goldens/ holds the committed reference PNGs)
+shaders/
+  shaders_slang/argus/     Primary .slangp/.slang pack (T-013)
+  shaders_glsl/argus/      Parallel legacy .glslp/.glsl pack (T-040)
 corpus/synthetic/        Generated test images (dither ramps, diagonal sweeps,
                           glyph sheets, checkerboard blocks, text pos/neg sets)
 .github/workflows/
-  compile-gate.yml        CI wiring for the T-002 compile gate
+  compile-gate.yml        CI: T-002/T-040 compile gates + T-003 render harness
 ```

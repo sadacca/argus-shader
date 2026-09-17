@@ -9,7 +9,10 @@ Tracks B and C share no code with A and should run in parallel.
 
 **Critical path:** T-001 → T-004 → T-016 → T-020 → T-023 → T-025 → T-033.
 Everything else can slip without stalling the shader core — except **T-010**, which gates T-017,
-and **T-005**, which gates T-020's fetch strategy.
+and **T-005**, which gates T-020's fetch strategy. **T-040** (legacy `.glslp`/`.glsl` pack, added
+2026-09-17) is a second output format tracking the same algorithm, not on the critical path itself,
+but it should not be left to accumulate against the whole finished slang pack — port each tier as it
+lands per T-040's acceptance criteria.
 
 **Highest-risk ticket: T-004.** If the two-level classifier decomposition can't separate dither from
 AA gradient, the architecture in §6a.3 changes and Phase 1 is re-scoped. Do it first.
@@ -37,14 +40,27 @@ commit. Portability is enforced continuously, not ported for in Phase 2 (NFR, P1
 
 ### T-003 — Headless golden-image regression harness
 **Track B · L · blocks T-022, T-032, T-036**
-**Status: blocked on a GPU/render backend — see `docs/backlog-status.md`.**
+**Status: built 2026-09-17 for the GLES backend — see `docs/backlog-status.md`. Backend coverage is
+partial; see the unchecked box below.**
 Deterministic offline frame-dump comparator emitting one PNG per (content, preset, tier, backend)
 tuple, diffed against committed goldens. This is the primary regression mechanism; perceptual review
-is a spot-check (§8, P2).
-- [ ] Byte-identical output across two consecutive runs on the same commit, same backend
-- [ ] Diff report identifies which tuples changed, with per-tuple pixel-delta metrics
-- [ ] Golden update is an explicit, reviewable commit — never automatic
-- [ ] Runs against all backends from T-002
+is a spot-check (§8, P2). Implementation: `tools/render_harness/` (`egl_context.py` for the headless
+EGL_EXT_platform_device context, `render_pass.py` renders one pass through the same glslang → SPIR-V
+→ spirv-cross GLES output T-002's compile gate validates, `compare_golden.py` + `run_harness.py` for
+the diff/update workflow). 55 goldens seeded under `tools/render_harness/goldens/` for the
+argus-mobile-lite preset against the full synthetic corpus.
+- [x] Byte-identical output across two consecutive runs on the same commit, same backend
+      (`render_pass.py --check-determinism`, hash-compared)
+- [x] Diff report identifies which tuples changed, with per-tuple pixel-delta metrics
+      (`compare_golden.py` reports mismatched-pixel count/percentage and max per-channel delta;
+      verified by deliberately corrupting a golden and confirming detection)
+- [x] Golden update is an explicit, reviewable commit — never automatic (`run_harness.py
+      --update-goldens`; default mode only ever reads goldens, never writes them)
+- [ ] Runs against all backends from T-002 — **only GLES is actually executed.** GL-desktop is
+      reachable via the same EGL device with a different API binding (not yet wired); Vulkan/SPIR-V
+      is validated (spirv-val) but not rendered (no headless Vulkan render path built yet — distinct
+      boilerplate from EGL/GLES); D3D11/12 and Metal have no runtime on this platform and can only
+      ever be compile/cross-compile-checked (already covered by T-002), not rendered.
 
 ### T-004 — Spike: two-level classifier feasibility ⚠️ highest risk
 **Track A · M · blocks T-015, T-016**
@@ -116,7 +132,9 @@ rewards over-triggering — the heuristic would appear to succeed by misclassify
 
 ### T-011 — Catalog existing-shader failure cases
 **Track C · M · depends on T-007, T-008, T-012**
-**Status: blocked on a render backend (and T-007's real-game corpus) — see `docs/backlog-status.md`.**
+**Status: partially unblocked 2026-09-17 — render backend available, so ScaleFX/Omniscale (MIT,
+cleared under T-001) can run now; xBRZ/SABR/HQx execution stays gated on a licensing-scope call, and
+T-007's real-game corpus is still needed for full coverage. See `docs/backlog-status.md`.**
 Run xBRZ, ScaleFX, SABR, Omniscale, and nearest-neighbour across the corpus; document where each
 fails. Establishes the specific gaps this project claims to close (§1, §4).
 - [ ] Every corpus item rendered through all five baselines at matched output resolution
@@ -138,9 +156,43 @@ Side-by-side comparison tooling (imgsli or custom) for spot-checks and the commu
 **Track A · S · depends on T-002**
 Root preset plus `#pragma parameter` declarations for edge threshold, dither-preservation strength,
 sharpen amount, temporal blend weight (FR5).
-- [ ] All FR5 parameters declared with sane defaults and documented ranges
-- [ ] Parameters surface and adjust live in RetroArch's shader menu
-- [ ] Compiles clean on all backends via T-002
+**Skeleton built 2026-09-17** (`shaders/shaders_slang/argus/`): passthrough pass with all four FR5
+parameters declared, passing both T-002's compile gate and a T-003 render/golden check.
+- [x] All FR5 parameters declared with sane defaults and documented ranges
+- [ ] Parameters surface and adjust live in RetroArch's shader menu — needs an actual RetroArch
+      install to verify; not checkable from this environment
+- [x] Compiles clean on all backends via T-002
+
+### T-040 — Legacy `.glslp`/`.glsl` preset pack (added 2026-09-17)
+**Track A · L · depends on T-013 (skeleton), tracks T-017/T-018/T-019/T-020 as each lands · new scope**
+Ship a second, independently-formatted preset pack for RetroArch's older GLSL shader driver
+(`.glslp` preset + single-file `.glsl` using `#if defined(VERTEX)`/`#elif defined(FRAGMENT)`
+conditional compilation, `COMPAT_*` portability macros, implicit non-Vulkan-semantics uniform
+bindings) alongside the primary `.slangp`/`.slang` pack, for RetroArch installs and non-RetroArch
+frontends that predate or don't support the slang pipeline. This is **not** a byproduct of T-002's
+SPIR-V/spirv-cross cross-compile — that pipeline's GL/GLES output targets the format the slang driver
+consumes, which is structurally different from the legacy driver's expected file layout and uniform
+conventions, even though the underlying per-pixel math can be shared conceptually between the two.
+Confirmed against real examples in `libretro/glsl-shaders` (`stock.glsl`, `crt-pi.glsl`): the legacy
+format's `#pragma parameter` syntax is identical to slang's, so FR5 parameter declarations translate
+directly; only the file structure, stage-selection mechanism, and uniform/varying naming differ.
+- [x] Root `.glslp` skeleton + `#pragma parameter` declarations mirroring T-013, using the legacy
+      single-file `#if defined(VERTEX)`/`#elif defined(FRAGMENT)` structure and `COMPAT_*` macros
+      (`shaders/shaders_glsl/argus/`, built 2026-09-17)
+- [x] Compile gate extended to validate the legacy format (`tools/compile_gate/compile_check_legacy.py`,
+      2026-09-17) — checks GLES 300, desktop GLSL 150/120, and (structurally, via the file's own
+      `#if __VERSION__ >= 130` COMPAT_* branch) GLES 100, for both stages. **Caught a real bug** while
+      building this: the shared `TEX0` varying was declared before any GLSL ES float precision default
+      existed, which glslangValidator rejects outright in the fragment stage — fixed by moving the
+      `precision mediump float` default before the shared declaration instead of leaving it fragment-
+      branch-local (see the file's header comment for detail).
+- [ ] Each tier's algorithm ported to legacy syntax as its slang counterpart lands (T-020 mobile-lite
+      first), not written from scratch after the slang pack is finished
+- [ ] Golden-image parity confirmed between the slang and legacy outputs within tolerance (T-003)
+- [ ] Documented: which frontends/RetroArch versions require the legacy pack vs. the slang pack,
+      and any feature the legacy driver cannot express (e.g., `OriginalHistory#` semantics for FR4 —
+      confirm the legacy driver's history/feedback support before T-025 lands, since the two drivers'
+      history models may not be equivalent)
 
 ### T-014 — Generate and bake the 3×3 topology LUT
 **Track A · M · depends on T-001, T-004**

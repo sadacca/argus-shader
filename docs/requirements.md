@@ -23,6 +23,7 @@ Retro upscaling (xBRZ, HQx, ScaleFX, SABR, Omniscale) has plateaued algorithmica
 - Reduce diagonal/curve artifacts beyond current ScaleFX/xBRZ baselines.
 - Add basic temporal stabilization to reduce shimmer on scrolling parallax backgrounds.
 - Ship as a standard `.slangp` preset pack compatible with RetroArch (and ideally librashader-based frontends) with no core modifications required.
+- **Also ship a parallel legacy `.glslp`/`.glsl` preset pack** (added 2026-09-17) for RetroArch installs and frontends that predate or don't support the slang pipeline — see FR10.
 - Run acceptably on ARM handheld GPUs (Retroid/Anbernic/Steam Deck class), not just desktop.
 - Minimize **output-resolution** render passes as a first-class design constraint, not an afterthought — mobile/tile-based GPUs are bandwidth-bound, and each additional full-size render target costs a full-frame round trip.
 
@@ -118,6 +119,19 @@ omits it cannot answer whether this shader improves on doing nothing.
    (global → core → content-directory → per-game, most specific wins), so a "Genesis + fast-action"
    combination ships as a directory or per-game preset override with no new engine mechanism required.
 
+10. **FR10 — Dual-format distribution (`.slangp`/`.slang` and legacy `.glslp`/`.glsl`):** (added
+    2026-09-17) Ship both the primary Vulkan-semantics slang pack and a parallel pack targeting
+    RetroArch's older GLSL shader driver, for installs/frontends that don't support the slang
+    pipeline. These are **not** the same artifact under two extensions — the legacy driver expects a
+    structurally different file (`#if defined(VERTEX)`/`#elif defined(FRAGMENT)` single-file
+    conditional compilation, `COMPAT_*` macros, implicit non-Vulkan uniform bindings) than what T-002's
+    SPIR-V/spirv-cross cross-compile emits for the slang path, even though `#pragma parameter` syntax
+    and the underlying reconstruction math are shared between the two. Each tier's algorithm should be
+    ported to the legacy format as it lands, not written from scratch after the slang pack is
+    finished. Confirm before FR4/temporal work lands on the legacy side whether the legacy GLSL
+    driver's history/feedback model is equivalent to `OriginalHistory#` — the two drivers' semantics
+    are not guaranteed to match.
+
 ## 6. Non-Functional Requirements
 
 - **Performance budget:** Target 60fps at 1080p-4K output on mid-tier ARM handheld GPUs (e.g., Adreno 6xx/7xx class) using the **mobile-lite (1-pass) or mobile (2-pass) tier**, not the full desktop chain. The desktop tier's higher pass count is a separate, explicitly opt-in budget for hardware where bandwidth isn't the bottleneck.
@@ -201,6 +215,7 @@ This is the core technical constraint for the mobile tier and should govern impl
 ## 7. Integration Path (RetroArch / libretro)
 
 - Distribute as a `.slangp` preset + associated `.slang` pass files, installable via the same folder structure as existing community shader packs (`shaders/shaders_slang/`).
+- **Also distribute a parallel `.glslp` preset + associated `.glsl` pass files** (FR10), installable via the equivalent legacy folder structure (`shaders/shaders_glsl/`), for RetroArch installs and frontends without slang support.
 - Validate against the [Slang Shader Spec](https://docs.libretro.com/development/shader/slang-shaders/) filter-chain model: each pass reads `Source` (prior pass or core input) and writes to a sized render target; final pass writes to backbuffer.
 - Cross-check compatibility with **librashader**, the Rust reimplementation of the slang pipeline used by non-RetroArch frontends, to maximize reach beyond RetroArch itself.
 - Test matrix should include: desktop (GL/Vulkan/D3D12), Steam Deck, at least one ARM handheld (Retroid/Anbernic), and macOS/Metal.

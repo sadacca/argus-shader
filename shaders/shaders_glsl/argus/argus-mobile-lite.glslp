@@ -1,0 +1,13 @@
+# T-040 — root .glslp skeleton for the mobile-lite tier, legacy-driver
+# counterpart to shaders_slang/argus/argus-mobile-lite.slangp (T-013). For
+# RetroArch installs and frontends that don't support the slang pipeline.
+# Reconstruction logic tracks the slang pack as each tier lands (T-020
+# first); this preset currently drives a parameterized passthrough pass.
+
+shaders = 1
+
+shader0 = shaders/mobile-lite.glsl
+filter_linear0 = false
+wrap_mode0 = clamp_to_edge
+scale_type0 = viewport
+scale0 = 1.0

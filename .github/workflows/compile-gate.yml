@@ -1,9 +1,11 @@
 name: Cross-backend compile gate
 
-# T-002: portability validated continuously from Phase 0 (docs/review-notes.md
-# P1), not ported for in Phase 2. Runs the stub .slang pass (and any real
-# passes added later under shaders/) through glslang -> SPIR-V -> spirv-cross
-# for every backend target named in docs/requirements.md's NFR list.
+# T-002/T-040: portability validated continuously from Phase 0 (docs/review-
+# notes.md P1), not ported for in Phase 2. Runs every shipped .slang pass
+# through glslang -> SPIR-V -> spirv-cross for every backend target named in
+# docs/requirements.md's NFR list, every shipped legacy .glsl pass through
+# glslangValidator directly (T-040), and T-003's golden-image harness
+# against the GLES render path.
 
 on:
   push:
@@ -24,12 +26,39 @@ jobs:
       - name: Compile stub pass across all backend targets
         run: python3 tools/compile_gate/compile_check.py
 
-      - name: Compile shipped shader passes (once any exist)
+      - name: Compile shipped slang shader passes (once any exist)
         run: |
-          shopt -s nullglob
+          shopt -s nullglob globstar
           passes=(shaders/**/*.slang)
           if [ ${#passes[@]} -gt 0 ]; then
             python3 tools/compile_gate/compile_check.py "${passes[@]}"
           else
             echo "no shipped .slang passes yet"
           fi
+
+      - name: Compile shipped legacy .glsl shader passes (T-040, once any exist)
+        run: |
+          shopt -s nullglob globstar
+          passes=(shaders/**/*.glsl)
+          if [ ${#passes[@]} -gt 0 ]; then
+            python3 tools/compile_gate/compile_check_legacy.py "${passes[@]}"
+          else
+            echo "no shipped legacy .glsl passes yet"
+          fi
+
+  render-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install slang toolchain and headless GLES stack
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq glslang-tools spirv-tools spirv-cross libegl1 libgles2 libglx-mesa0 mesa-utils
+
+      - name: Install Python render deps
+        run: pip3 install --user --break-system-packages PyOpenGL numpy Pillow
+
+      - name: Run T-003 golden-image regression harness
+        run: python3 tools/render_harness/run_harness.py

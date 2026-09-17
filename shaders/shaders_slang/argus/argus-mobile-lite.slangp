@@ -1,0 +1,14 @@
+# T-013 — root .slangp skeleton for the mobile-lite tier (FR3: 1 pass, 1
+# output-resolution pass). Reconstruction logic (T-014 LUT through T-020
+# fused classifier+reconstruction) is not implemented yet; this preset
+# currently drives a parameterized passthrough pass so the skeleton can be
+# validated end-to-end (compile gate, parameter surfacing) before the
+# algorithm lands.
+
+shaders = 1
+
+shader0 = shaders/mobile-lite.slang
+filter_linear0 = false
+wrap_mode0 = clamp_to_edge
+scale_type0 = viewport
+scale0 = 1.0
