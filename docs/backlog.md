@@ -276,9 +276,19 @@ Reconstruct edges/curves for classes (a) and (c) using LUT-supplied geometry.
 **Track A · M · depends on T-016**
 Reconstruction rule for class (b) that preserves intentional dithering rather than smoothing it away
 (Goal 2, FR9 system axis).
-- [ ] Checkerboard-transparency block (T-008) survives without being blurred to flat color
-- [ ] Genesis-style manual dithering visibly preserved — the case §5 FR9 flags as most at risk
-- [ ] Behavior differs measurably between NES-style hard dither and SNES-style blending
+**Built 2026-09-17**: `tools/dither_reconstruct/` (`dither_debug.slang`, `dither_reference.py`,
+`generate_soft_dither.py`, `verify_gpu.py`, `report.md`). Debug/test shader verified against a CPU
+reference through T-003's render harness, same pattern as T-015/T-016 — not yet fused into the
+shipped mobile-lite pass (T-020's job) and only defines class (b)'s own rule; non-dither pixels
+are an unfiltered placeholder here, not classes (a)/(c)/(d)'s real reconstruction.
+- [x] Checkerboard-transparency block (T-008) survives without being blurred to flat color —
+      mean |rendered-source| over the dither region = 0.000 at default strength (`report.md`)
+- [x] Genesis-style manual dithering visibly preserved — the case §5 FR9 flags as most at risk —
+      same 0.000 deviation result on `dither_ramp`'s top half
+- [x] Behavior differs measurably between NES-style hard dither and SNES-style blending — required
+      generating new test content (`corpus/synthetic/dither_soft/`, see `report.md` Finding 1); no
+      existing corpus sample isolated close-color ("soft") ordered dithering. Measured 2.04x more
+      blending on the soft case than the hard case at a shared partial strength setting.
 
 ### T-020 — Fuse into single-pass mobile-lite shader
 **Track A · L · depends on T-017, T-018, T-019, T-005 · critical path**

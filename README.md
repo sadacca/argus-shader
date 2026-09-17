@@ -45,7 +45,7 @@ Each tier carries a hard bandwidth ceiling in bytes per output pixel (8 / 10 / 3
 |---|---|
 | [`docs/requirements.md`](docs/requirements.md) | Full requirements — functional/non-functional requirements, mobile optimization strategy, integration path, validation plan, open questions, phasing with numeric exit criteria |
 | [`docs/review-notes.md`](docs/review-notes.md) | v0.1 → v0.2 technical review: four blocking corrections, optimizations, and process fixes, with sources |
-| [`docs/backlog.md`](docs/backlog.md) | 39 tickets across 5 phases, with acceptance criteria, dependencies, and the critical path |
+| [`docs/backlog.md`](docs/backlog.md) | 40 tickets across 5 phases, with acceptance criteria, dependencies, and the critical path |
 
 ## Status
 
@@ -70,12 +70,25 @@ and two real bugs the new tooling caught along the way (a GLSL ES precision-decl
 in the legacy skeleton, and a silently-broken CI glob that meant shipped shaders were never actually
 being compile-gated).
 
+**Update, 2026-09-17 (continued):** the FR2 region classifier is built —
+**T-015** (wide-kernel scalar statistics) and **T-016** (four-class classifier) are a GLSL port of
+T-004's spike, verified against a CPU reference through the actual GLES render path
+(`tools/classifier_gpu/`, see its `report.md`). Porting to GLSL caught two more real numerical bugs
+(a 0/0-indeterminate checkerboard-autocorrelation ratio, and a unique-color-count proxy that needed
+32 luma bins, not 8), plus a GLES-300-vs-310 toolchain mismatch below this project's own decided
+GLES 3.1+ floor. **T-019** (dither preservation reconstruction rule) is also built
+(`tools/dither_reconstruct/`, see its `report.md`) — verified the same way, and along the way found
+that the existing synthetic corpus had no sample isolating "soft" (SNES-style, close-color) ordered
+dithering, so a new `corpus/synthetic/dither_soft/` category was added to actually test that
+acceptance criterion rather than assume an existing category covered it.
+
 Still genuinely blocked — real handheld bring-up (T-006), a real-game content corpus (T-007), and the
 copyleft half of cataloging existing shaders' failure modes (T-011) — need a physical reference device
 or a human call on licensing/content sourcing, not a tooling gap. Each is documented in
-`docs/backlog-status.md` with what specifically would unblock it. The next unstarted ticket on the
-critical path is **T-016** (region classifier, FR2) — see `docs/backlog-status.md` for recommended
-sequencing now that the render harness exists to check against.
+`docs/backlog-status.md` with what specifically would unblock it. With T-015/T-016/T-019 done, the
+remaining blockers on **T-020** (fuse into the single shipped mobile-lite pass, critical path) are
+**T-017** (text/glyph protection) and **T-018** (edge reconstruction from LUT topology) — see
+`docs/backlog-status.md` for recommended sequencing.
 
 ## Project structure
 
@@ -91,6 +104,8 @@ tools/
   compile_gate/          T-002: stub .slang pass + cross-backend compile check;
                           compile_check_legacy.py (T-040): legacy .glsl compile check
   classifier_spike/      T-004: offline classifier feasibility spike + report
+  classifier_gpu/        T-015/T-016: GLSL classifier + CPU reference + verify + report
+  dither_reconstruct/    T-019: dither-preservation reconstruction rule + verify + report
   patterns/               T-008/T-009/T-010: synthetic test corpus generators
   lut/                    T-014: 3x3 topology LUT generator + invariant tests
   ab_compare/             T-012: perceptual A/B comparison harness

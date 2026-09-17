@@ -124,6 +124,35 @@ Picking up directly from the update above in the same session:
   passthrough skeletons don't use any 3.1-only feature, so this was a pure toolchain-target fix, not
   a rendering change).
 
+## Update — 2026-09-17 (continued once more: T-019 built)
+
+- **T-019 is built** — `tools/dither_reconstruct/` (`dither_debug.slang`, `dither_reference.py`,
+  `generate_soft_dither.py`, `verify_gpu.py`, `report.md`). Same verify-against-CPU-reference-through-
+  the-real-render-harness pattern as T-015/T-016. The rule: each class-(b) pixel blends between its
+  exact source color and its local 5x5-window mean color, by an amount that depends on both the FR5
+  `ARGUS_DITHER_STRENGTH` parameter (0 at the default of 1.0 — full preservation for everyone) and a
+  "hardness" signal derived from `spread` (the same statistic T-015's checkerboard-autocorrelation 0/0
+  guard already computes) — a stark, high-contrast checkerboard degrades less than a soft, close-color
+  dither at the same non-default strength setting, since averaging two very different colors produces
+  an obviously-wrong muddy color rather than just "less crisp." All three T-019 acceptance criteria
+  pass against the actual rendered shader output, not just the CPU model (`report.md`'s results table).
+
+- **Found a real corpus gap while building this, not a bug**: T-019's third acceptance box wants
+  measurably different behavior between "NES-style hard dither" and "SNES-style blending," but no
+  existing T-008 corpus sample isolates the soft/close-color case — every existing dither sample
+  (`checkerboard_transparency`, `dither_ramp`) uses high-contrast color pairs (measured `spread`
+  ~17-76 luma units). Added `corpus/synthetic/dither_soft/` (new, additive test content scoped to
+  this ticket, not a change to T-008) with a close-color (~20 luma units apart, measured spread 7.7)
+  Bayer-dithered sample per system — see `report.md` Finding 1 for why this matches what
+  `docs/requirements.md` §5 FR9 actually means by "SNES-style" (real alpha blending directly wouldn't
+  be classified as dither at all; the case worth testing is SNES-era content that still uses ordered
+  dithering, just between closer palette entries than NES/Genesis's typical high-contrast pairs).
+
+- **Additive change to `tools/classifier_gpu/reference.py`**: exposed `spread` (already computed
+  internally for the checkerboard-autocorrelation guard) as its own field in `compute_stats()`'s
+  return dict, since T-019 needed it directly. Doesn't change T-015/T-016's already-verified behavior
+  — pure exposure of an existing intermediate value, not a new computation.
+
 ## Completed this session
 
 | Ticket | What was built | Where |
@@ -202,24 +231,33 @@ copyleft half of T-011) needs a physical handheld or a human curation/licensing 
 that set is a tooling gap.
 
 **Next up on the critical path** (`T-001 → T-004 → T-016 → T-020 → T-023 → T-025 → T-033`): T-001,
-T-004, T-015, and T-016 are now all done (see "Completed this session" above, the README, and
-`tools/classifier_gpu/report.md`). **T-020 (fuse into a single shipped pass)** is next, but it
-explicitly depends on T-017/T-018/T-019 landing first (text/glyph protection, edge reconstruction,
-dither preservation — the actual per-class reconstruction rules T-016 only classifies *into*, doesn't
-yet apply). T-018 has no further Phase 1 dependency beyond what's already done (T-014's LUT, T-016's
-classifier) and looks like the natural next pick; T-017 additionally needs T-009/T-010's already-built
-corpus (no new blocker) and T-019 only needs T-016. All three could proceed in any order or in
-parallel. Recommended sequencing per ticket, now that the harness and classifier both exist: implement
-against the passthrough skeleton, run `tools/compile_gate/compile_check.py` for portability, verify
-against `tools/classifier_gpu/verify_gpu.py`-style CPU-reference checks where the ticket has a
-numeric bar (as T-015/T-016 did), then `tools/render_harness/run_harness.py --update-goldens` once
-the rendered output is visually confirmed correct (goldens are reviewable diffs in the commit, per
-T-003's third acceptance box — never update them to paper over an unreviewed change). T-040's legacy
+T-004, T-015, T-016, and now **T-019** are done (see "Completed this session" above, the README, and
+`tools/classifier_gpu/report.md` / `tools/dither_reconstruct/report.md`). **T-020 (fuse into a single
+shipped pass)** is next on the critical path, but it explicitly depends on T-017/T-018/T-019 landing
+first (text/glyph protection, edge reconstruction, dither preservation — the actual per-class
+reconstruction rules T-016 only classifies *into*, doesn't yet apply); with T-019 done, **T-017 and
+T-018 are the two remaining blockers on T-020**. T-018 (edge reconstruction from LUT topology) has no
+further Phase 1 dependency beyond what's already done (T-014's LUT, T-016's classifier) and is the
+larger of the two (L-size) — natural next pick. T-017 (text/glyph protection) additionally needs
+T-009/T-010's already-built corpus (no new blocker) and is smaller (M-size); both can proceed in any
+order or in parallel, same as before. Recommended sequencing per ticket, now demonstrated three times
+(T-015/T-016, T-019): implement against the passthrough skeleton, run
+`tools/compile_gate/compile_check.py` for portability, verify against a
+`tools/*/verify_gpu.py`-style CPU-reference check through the actual render harness (not just an
+offline CPU model) where the ticket has a numeric bar, then
+`tools/render_harness/run_harness.py --update-goldens` once the rendered output is visually confirmed
+correct (goldens are reviewable diffs in the commit, per T-003's third acceptance box — never update
+them to paper over an unreviewed change) — though note T-015/T-016/T-019's debug/test shaders were
+each verified through their own dedicated `verify_gpu.py` instead of the golden set, since they're
+pre-fusion test shaders, not shipped passes; T-020 is what actually needs new goldens. T-040's legacy
 pack should get the same treatment in parallel as each tier lands, not written after the fact from
 finished slang passes. Watch for the same class of environment-assumption bug found twice already
 this session (the GLES-300-vs-310 mismatch, the CI globstar gap): re-check tool assumptions against
 what's actually true in this environment rather than trusting an earlier comment, especially anywhere
-a "target" or "floor" is hardcoded as a literal.
+a "target" or "floor" is hardcoded as a literal. Also watch for the T-019 pattern of discovering a
+missing corpus category mid-ticket (Finding 1 in its report) — check what the acceptance criteria
+actually need against what test content actually exists before assuming an existing corpus category
+covers it.
 
 **Still open on T-003 itself**, tracked as unchecked in its backlog entry rather than left implicit:
 GL-desktop execution (same EGL device, different API binding — small lift, not yet wired), a headless

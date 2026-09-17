@@ -106,6 +106,12 @@ def compute_stats(rgb: np.ndarray):
         "checkerboard_autocorr": checkerboard_autocorr,
         "luma_bin_popcount": popcount,
         "stroke_width": stroke_width,
+        # Mean absolute luma deviation from the window mean — already computed
+        # above for the checkerboard-autocorrelation guard. Exposed as its own
+        # field (added for T-019, additive/non-breaking) because T-019's
+        # dither-preservation rule needs it directly as a "how hard-contrast
+        # is this dither" signal, separate from the autocorrelation ratio.
+        "spread": spread,
     }
 
 
