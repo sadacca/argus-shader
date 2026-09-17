@@ -10,12 +10,18 @@ GLSL, so it doesn't go through glslangValidator's -V/SPIR-V path at all
 way RetroArch's own gl_glsl_compile_shader() assembles it: a `#version`
 line, then a `#define VERTEX` or `#define FRAGMENT`, then the file verbatim.
 
-Checked against four target profiles, matching the ES-vs-desktop and
+Checked against five target profiles, matching the ES-vs-desktop and
 GLSL-version splits the legacy driver's COMPAT_* macros are written to
 support:
-  - GLSL ES 300 (GLES3 mobile path — the actual target per docs/gles-floor.md,
-    T-005, which floors this project at GLES 3.1+ core, gather-only, no
-    GLES 3.0 fallback)
+  - GLSL ES 310 (GLES3.1+ mobile path — the actual target per
+    docs/gles-floor.md, T-005, which floors this project at GLES 3.1+ core,
+    gather-only, no GLES 3.0 fallback; matches tools/render_harness's and
+    compile_check.py's own GLES target, fixed to 310 on 2026-09-17 after
+    ESSL 300 turned out not to have bitCount — see docs/backlog-status.md)
+  - GLSL ES 300 (GLES3.0 baseline; checked in addition to 310 since some
+    non-RetroArch legacy-driver consumers this pack targets may predate
+    3.1 even though this project's own device matrix doesn't need it —
+    not gating, informative)
   - GLSL ES 100 (older GLES2 devices outside this project's target matrix;
     checked only because the file's own COMPAT_* macros claim to support
     it via the `#if __VERSION__ >= 130` branch — a structural check of that
@@ -38,7 +44,8 @@ REQUIRED_TOOLS = ["glslangValidator"]
 
 # (label, #version line, defines to prepend after it)
 PROFILES = [
-    ("GLES 300 (GLES3 mobile, the actual T-005 target)", "#version 300 es"),
+    ("GLES 310 (GLES3.1+ mobile, the actual T-005 target)", "#version 310 es"),
+    ("GLES 300 (GLES3.0 baseline, informative only)", "#version 300 es"),
     ("GLES 100 (structural check of the COMPAT_* GLES2 fallback only)", "#version 100"),
     ("GLSL 150 (desktop GL 3.2+)", "#version 150"),
     ("GLSL 120 (older desktop GL)", "#version 120"),

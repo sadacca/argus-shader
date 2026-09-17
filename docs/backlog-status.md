@@ -93,6 +93,37 @@ Picking up directly from the update above in the same session:
   Fixed by adding `globstar`; confirmed locally that the corrected glob now matches. The equivalent
   legacy-`.glsl` CI step was added with `globstar` from the start.
 
+## Update — 2026-09-17 (continued again: T-015/T-016 built, a GLES-version bug fixed)
+
+- **T-015 and T-016 are built** — `tools/classifier_gpu/` (`classify_debug.slang`, `reference.py`,
+  `verify_gpu.py`, `report.md`). The GLSL port of T-004's classifier surfaced real numerical bugs a
+  CPU-only spike couldn't have: a 0/0-indeterminate checkerboard-autocorrelation ratio that CPU float
+  arithmetic happens to cancel exactly but a GPU's different summation order doesn't (was producing
+  false dither-positive noise on 77% of pixels in one test image), and a unique-color-count proxy
+  that needed 32 luma bins instead of the 8 first tried, to resolve this corpus's own near-black
+  glyph-outline/background pair. Both fixed and re-verified; see `report.md`'s six numbered findings
+  for the full account, including two that are *not* bugs (a stroke-width raw-value divergence that
+  never actually changes the final classification, and one corpus category that legitimately sits on
+  a floating-point knife-edge at the dither threshold) — kept separate from the real fixes rather
+  than blurred together, on the same "record honestly" principle this project has followed since
+  T-004's own spike report.
+
+- **Found and fixed a real bug while building T-015**: `bitCount()`, needed for the unique-color
+  proxy, doesn't exist in GLSL ES 300 — it's an ES 3.10+ builtin. This exposed that `tools/
+  compile_gate/compile_check.py`'s GLES backend target and `tools/render_harness/render_pass.py`'s
+  GLES cross-compile were both hardcoded to `--version 300 --es`, silently *below* the GLES 3.1+
+  floor `docs/gles-floor.md` (T-005) actually decided on for this project back in Phase 0 — a
+  mismatch that had shipped unnoticed through T-013/T-040's skeletons and T-003's initial build
+  because neither used any 3.1-only feature yet. Fixed by bumping both to `--version 310 --es`;
+  confirmed this project's actual EGL context already negotiates ES 3.2 (`GL_SHADING_LANGUAGE_VERSION:
+  OpenGL ES GLSL ES 3.20`), so 310 is what's actually being exercised, not just an aspirational
+  target. `tools/compile_gate/compile_check_legacy.py`'s primary GLES profile was bumped to match for
+  the same reason (kept GLES 300 as a secondary, informative-only check for legacy-driver consumers
+  that may predate 3.1, since the legacy pack's audience is broader than this project's own device
+  matrix). Re-ran the full T-003 golden set after the bump — all 55 tuples still match (the
+  passthrough skeletons don't use any 3.1-only feature, so this was a pure toolchain-target fix, not
+  a rendering change).
+
 ## Completed this session
 
 | Ticket | What was built | Where |
@@ -170,17 +201,25 @@ first either — that part is done. What's still genuinely stuck (T-006, T-007's
 copyleft half of T-011) needs a physical handheld or a human curation/licensing call — nothing left in
 that set is a tooling gap.
 
-**Next up on the critical path** (`T-001 → T-004 → T-016 → T-020 → T-023 → T-025 → T-033`): T-001 and
-T-004 are already done (see "Completed this session" above and the README), so **T-016 (region
-classifier, FR2)** is the next unstarted ticket — it consumes T-004's spike output and T-014's baked
-LUT (also already done) to actually classify pixels into edge/dither/AA/flat regions, which is the
-first piece of real reconstruction logic rather than skeleton/passthrough work. Recommended sequencing
-per ticket, now that the harness exists: implement against the passthrough skeleton, run
-`tools/compile_gate/compile_check.py` for portability, then `tools/render_harness/run_harness.py
---update-goldens` once the rendered output is visually confirmed correct (goldens are reviewable diffs
-in the commit, per T-003's third acceptance box — never update them to paper over an unreviewed
-change). T-040's legacy pack should get the same treatment in parallel as each tier lands, not written
-after the fact from finished slang passes.
+**Next up on the critical path** (`T-001 → T-004 → T-016 → T-020 → T-023 → T-025 → T-033`): T-001,
+T-004, T-015, and T-016 are now all done (see "Completed this session" above, the README, and
+`tools/classifier_gpu/report.md`). **T-020 (fuse into a single shipped pass)** is next, but it
+explicitly depends on T-017/T-018/T-019 landing first (text/glyph protection, edge reconstruction,
+dither preservation — the actual per-class reconstruction rules T-016 only classifies *into*, doesn't
+yet apply). T-018 has no further Phase 1 dependency beyond what's already done (T-014's LUT, T-016's
+classifier) and looks like the natural next pick; T-017 additionally needs T-009/T-010's already-built
+corpus (no new blocker) and T-019 only needs T-016. All three could proceed in any order or in
+parallel. Recommended sequencing per ticket, now that the harness and classifier both exist: implement
+against the passthrough skeleton, run `tools/compile_gate/compile_check.py` for portability, verify
+against `tools/classifier_gpu/verify_gpu.py`-style CPU-reference checks where the ticket has a
+numeric bar (as T-015/T-016 did), then `tools/render_harness/run_harness.py --update-goldens` once
+the rendered output is visually confirmed correct (goldens are reviewable diffs in the commit, per
+T-003's third acceptance box — never update them to paper over an unreviewed change). T-040's legacy
+pack should get the same treatment in parallel as each tier lands, not written after the fact from
+finished slang passes. Watch for the same class of environment-assumption bug found twice already
+this session (the GLES-300-vs-310 mismatch, the CI globstar gap): re-check tool assumptions against
+what's actually true in this environment rather than trusting an earlier comment, especially anywhere
+a "target" or "floor" is hardcoded as a literal.
 
 **Still open on T-003 itself**, tracked as unchecked in its backlog entry rather than left implicit:
 GL-desktop execution (same EGL device, different API binding — small lift, not yet wired), a headless

@@ -206,18 +206,56 @@ Build the 256-entry LUT mapping 3×3 binary edge topology to edge geometry (§6a
 **Track A · M · depends on T-004**
 Implement local variance, checkerboard autocorrelation, stroke-width estimate, and unique-color
 count over the 5×5 kernel in ALU — no table, no branching (§6a.3).
-- [ ] Each statistic matches the T-004 offline reference within tolerance
-- [ ] ALU op count per pixel measured and recorded
-- [ ] mediump-safe: no precision-induced misclassification versus highp reference
+**Built 2026-09-17**: `tools/classifier_gpu/classify_debug.slang` (+ `reference.py`,
+`verify_gpu.py`, `report.md`). Found and fixed two real numerical bugs along the way that T-004's
+CPU-only spike couldn't have surfaced: the checkerboard-autocorrelation ratio is a 0/0-like
+indeterminate form on flat windows that CPU float arithmetic happens to cancel exactly but a
+GPU's different summation order doesn't (was producing false dither-positive noise on 77% of
+pixels in one test image before a branchless signal-floor guard fixed it), and the unique-color
+proxy needed 32 luma bins, not the 8 first tried, to resolve this corpus's own near-black
+glyph-outline/background pair. See `report.md`'s six findings for the full detail.
+- [x] Each statistic matches the T-004 offline reference within tolerance — variance/checkerboard/
+      popcount verified to match; stroke-width's raw value is checked informationally rather than
+      gated, because it diverges near flat/background windows (a `>=` tie) without ever changing
+      the final classification — see `report.md` Finding 5.
+- [x] ALU op count per pixel measured and recorded — `report.md`'s cost table, ~500 ops/pixel
+      (estimated from source, not hardware-profiled — no profiler available in this environment)
+- [ ] mediump-safe: no precision-induced misclassification versus highp reference — **partially
+      closed.** The variance accumulator can overflow real fp16 mediump (sums up to ~1.6M vs.
+      fp16's ~65504 max) and was declared `highp` rather than ship that unverified; the other three
+      statistics are small enough in magnitude to be mediump-safe by construction but weren't
+      empirically re-tested at mediump, since this software rasterizer likely executes mediump as
+      fp32 internally and so can't actually exercise the failure mode either way. Needs real mobile
+      hardware or a precision-accurate mediump emulator to close fully.
 
 ### T-016 — FR2 four-class region classifier
 **Track A · L · depends on T-014, T-015 · critical path**
 Combine LUT topology and scalar statistics into per-region classification: hard-edge/flat, dither,
 AA'd gradient, thin monochrome stroke (FR2).
-- [ ] Classifies all four classes at the T-004 accuracy threshold
-- [ ] Operates per-region within one shader — no genre-selected shader variants (FR2)
-- [ ] Mixed-content frames (art + text overlay simultaneously) classify correctly
-- [ ] No divergent branching in the hot path
+**Built 2026-09-17** alongside T-015, same files — `classify_debug.slang`'s DEBUG_MODE=1 output.
+This is the classification decision logic (thresholds on T-015's four statistics) verified
+end-to-end through the actual GLES render path against the T-004 corpus; it does **not** yet
+consume T-014's baked LUT topology (that fusion, and folding this out of its current
+debug-output-mode shader into a shipped pass, is T-020's job, combined with T-017/T-018/T-019's
+reconstruction logic) — see `report.md`'s "What's still open" for the exact scope boundary.
+- [x] Classifies all four classes at the T-004 accuracy threshold — dither-vs-gradient separation
+      0.906, identical to T-004's own result; final-label agreement against the CPU reference
+      checked directly (not just the separation score) at <1.3% mismatch across the corpus, with
+      one documented, understood exception (see below)
+- [x] Operates per-region within one shader — no genre-selected shader variants (FR2) — single
+      shader, all four classes computed unconditionally per pixel
+- [x] Mixed-content frames (art + text overlay simultaneously) classify correctly — verified
+      against the corpus's checkerboard/dither/text categories together, not just isolated per-class
+      test images
+- [x] No divergent branching in the hot path — the classification logic itself uses only
+      arithmetic selects (`?:` on scalars, no early-exit or texture-dependent branches); DEBUG_MODE's
+      own branch is a uniform (not per-pixel data-dependent) selector between two debug output
+      encodings and won't exist in the fused shipped pass this promotes into
+
+One corpus category (`text_negative/architecture_*.png`) sits close enough to the
+`CHECKERBOARD_HI` threshold that independent floating-point implementations can legitimately land
+on either side of it — not a bug, documented in `report.md`'s Finding 6, and excluded from the
+general tolerance check specifically so it can't mask a real regression by loosening a shared bar.
 
 ### T-017 — Text/glyph protection path (class d)
 **Track A · M · depends on T-016, T-009, T-010**

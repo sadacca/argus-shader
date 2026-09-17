@@ -46,6 +46,9 @@ jobs:
             echo "no shipped legacy .glsl passes yet"
           fi
 
+      - name: Compile the T-015/T-016 classifier debug shader
+        run: python3 tools/compile_gate/compile_check.py tools/classifier_gpu/classify_debug.slang
+
   render-harness:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -62,3 +65,6 @@ jobs:
 
       - name: Run T-003 golden-image regression harness
         run: python3 tools/render_harness/run_harness.py
+
+      - name: Run T-015/T-016 classifier verification against the CPU reference
+        run: python3 tools/classifier_gpu/verify_gpu.py

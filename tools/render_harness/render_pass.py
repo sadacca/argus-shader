@@ -50,7 +50,12 @@ def compile_to_gles(slang_path: Path, tmpdir: Path):
         r = run_cmd(["glslangValidator", "-V", "-S", stage_flag, "-o", str(spv), str(src)])
         if r.returncode != 0:
             raise RuntimeError(f"glslangValidator failed for {stage}:\n{r.stdout}{r.stderr}")
-        r = run_cmd(["spirv-cross", str(spv), "--version", "300", "--es"])
+        # 310, not 300: matches docs/gles-floor.md's (T-005) actual decided
+        # floor of GLES 3.1+ core, gather-only, no GLES 3.0 fallback — and
+        # this environment's real context negotiates ES 3.2 (confirmed via
+        # GL_SHADING_LANGUAGE_VERSION), so 310 is also what's actually
+        # being exercised, not an aspirational target.
+        r = run_cmd(["spirv-cross", str(spv), "--version", "310", "--es"])
         if r.returncode != 0:
             raise RuntimeError(f"spirv-cross failed for {stage}:\n{r.stdout}{r.stderr}")
         results[stage] = r.stdout
