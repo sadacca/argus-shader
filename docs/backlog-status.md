@@ -338,3 +338,51 @@ scope (T-040, T-041) rather than quietly loosening the bar or reporting the favo
 GL-desktop execution (same EGL device, different API binding — small lift, not yet wired), a headless
 Vulkan render path (distinct boilerplate from EGL/GLES, not started), and D3D11/12/Metal remain
 compile-only since no runtime for either exists on this platform.
+
+## Update — 2026-09-17 (continued once more: T-020 built — mobile-lite fused into a single shipped pass)
+
+**T-020 is built.** `shaders/shaders_slang/argus/shaders/mobile-lite.slang` now fuses T-016's
+four-class classifier with T-017/T-018/T-019's per-class reconstruction rules into the single
+shipped pass FR3 requires — see `tools/fusion/report.md` for the full write-up. Summary:
+
+- **Fusion verified exact**, not just "close": `tools/fusion/verify_gpu.py` checks the fused
+  shader's output against each contributing debug shader (already independently verified by its own
+  ticket) on content dominated by that class, and requires an exact match — result is 0-pixel
+  difference across every class on every corpus sample tested, not a tolerance pass.
+- **Compile gate passes clean** on all five backends (Vulkan, GL, GLES, D3D11/12, Metal).
+- **Found and fixed a real gap in this project's own render-harness regression tests**, not a gap in
+  the shader: `argus-mobile-lite.slangp` inherited `scale0 = 1.0` from T-013's passthrough skeleton,
+  which made T-018's edge-reconstruction branch a mathematical no-op (sub-pixel offset is exactly 0
+  at 1:1 scale) — the committed goldens were silently testing nothing of this ticket's actual logic,
+  and reported a clean pass regardless. Fixed by setting `scale0 = 4.0` (real RetroArch playback is
+  unaffected — `scale_type0 = viewport` means the runtime ignores `scale0` regardless; only this
+  offline harness reads it literally) and regenerating all 60 goldens at that scale, each spot-checked
+  visually against a plain nearest-neighbour upscale before committing. See `tools/fusion/report.md`
+  Finding 1 for the full detail — this is the same class of "looked green, was checking the wrong
+  thing" bug as the GLES-300-vs-310 mismatch and the CI globstar gap found earlier this session.
+- Render-harness regression: 60/60 content/preset tuples now match their (regenerated, reviewed)
+  golden at the corrected scale.
+- Visual spot-check (manual, this session): edge reconstruction only measurably changes output near
+  compass-aligned angles (matches T-018's already-documented compass-snapping limitation, not a new
+  bug); dither/checkerboard content is exactly preserved at the default `ARGUS_DITHER_STRENGTH = 1.0`
+  (correct per FR2); text/glyph interiors are untouched, only true edges change. No unexpected
+  blurring or bleed into protected pixels.
+- Verified from the compiled GLES reflection (not physical Adreno hardware, which isn't available in
+  this environment — same limitation as T-006/T-021/T-018): exactly one `vec2` varying crosses the
+  vertex/fragment boundary, trivially within any GLES 3.1 varying budget.
+
+**Two things carried in from earlier tickets remain open, neither touched by this ticket**: T-041
+(class-(d) classifier separability) and T-018's honest non-win against Omniscale (wins 1 of 5 tested
+scales) — see `tools/fusion/report.md`'s "What's still open" for the full list, which also now
+includes `textureGather` adoption (a tracked perf optimization, not attempted here) and T-014's
+texture-vs-const-array LUT question (needs real GPU hardware to re-verify, carried from T-018
+Finding 1).
+
+**T-020 has no remaining Phase 1 ticket blocking it, and none of it blocks T-020 either now that it's
+built** — `docs/backlog.md`'s T-020 boxes are updated accordingly. The mobile-lite tier's shipped
+`.slang` pass is ready for a human to look at (`tools/fusion/report.md`'s visual spot-check table, or
+by running the harness's rendered output directly) — this is the "shader ready for UAT" milestone.
+**T-022 (Phase 1 exit validation — perceptual comparison against nearest-neighbour/SABR, bandwidth,
+frame time, false-positive-rate threshold) has explicitly not been run** and is the next item on the
+critical path; T-020's checks here are necessary but not sufficient for T-022's own bar. T-040's
+legacy port of this fused logic also remains open, tracked but not blocking.

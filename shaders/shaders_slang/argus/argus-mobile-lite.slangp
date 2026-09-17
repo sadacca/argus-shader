@@ -1,9 +1,7 @@
 # T-013 — root .slangp skeleton for the mobile-lite tier (FR3: 1 pass, 1
-# output-resolution pass). Reconstruction logic (T-014 LUT through T-020
-# fused classifier+reconstruction) is not implemented yet; this preset
-# currently drives a parameterized passthrough pass so the skeleton can be
-# validated end-to-end (compile gate, parameter surfacing) before the
-# algorithm lands.
+# output-resolution pass). T-020 landed the real fused classifier +
+# reconstruction pass in shaders/mobile-lite.slang; this preset now drives
+# that pass.
 
 shaders = 1
 
@@ -11,4 +9,16 @@ shader0 = shaders/mobile-lite.slang
 filter_linear0 = false
 wrap_mode0 = clamp_to_edge
 scale_type0 = viewport
-scale0 = 1.0
+# scale0 is a no-op at real runtime (scale_type0=viewport means RetroArch
+# always renders to the actual output viewport, whatever that is). It's set
+# to 4.0, not the spec-conventional 1.0, because tools/render_harness's
+# offline harness has no notion of a real viewport and reads this field
+# literally as its test output-size multiplier (render_pass.py, `scale`
+# arg) — at the previous 1.0, every golden regenerated bit-identical to the
+# old T-013 passthrough, silently testing nothing of T-020's reconstruction
+# logic (edge-directed blending is a no-op at 1:1 by construction: the
+# sub-pixel offset within a source texel is exactly zero when output
+# resolution equals source resolution). 4.0 matches the middle of the
+# realistic 2x-6x range T-018's report.md characterizes; see
+# tools/fusion/report.md.
+scale0 = 4.0

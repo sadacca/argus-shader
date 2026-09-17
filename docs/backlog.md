@@ -354,10 +354,33 @@ are an unfiltered placeholder here, not classes (a)/(c)/(d)'s real reconstructio
 **Track A · L · depends on T-017, T-018, T-019, T-005 · critical path**
 Fuse classification and reconstruction into one fragment shader: fixed unrolled neighborhood, no
 intermediate render targets, mediump, `textureGather` where available (FR3, §6a).
-- [ ] Exactly 1 pass, 1 output-resolution pass, zero intermediate RTs
-- [ ] Base coord + texel size as varyings only (≤2 vec4) — offsets computed in FS (§6a.6, B3)
-- [ ] Varying count verified ≤16 vec4 on Adreno 6xx
-- [ ] `textureGather` used where available, with the T-005 fallback path if required
+**Built 2026-09-17** (`shaders/shaders_slang/argus/shaders/mobile-lite.slang`, driven by
+`argus-mobile-lite.slangp`) — see `tools/fusion/report.md` for the full write-up, including a real
+gap this ticket found and fixed in the render harness's own regression goldens (Finding 1: `scale0 =
+1.0`, inherited from T-013's passthrough skeleton, made T-018's edge reconstruction a mathematical
+no-op, so the previously-committed goldens were silently testing nothing of this ticket's logic —
+fixed to `scale0 = 4.0`, all 60 goldens regenerated and visually spot-checked before committing).
+- [x] Exactly 1 pass, 1 output-resolution pass, zero intermediate RTs — verified directly from
+      `argus-mobile-lite.slangp` (`shaders = 1`, `scale_type0 = viewport`)
+- [x] Base coord + texel size as varyings only (≤2 vec4) — offsets computed in FS (§6a.6, B3) —
+      verified via compiled GLES reflection: exactly one `vec2` varying (`vTexCoord`) crosses the
+      vertex/fragment boundary; no texel-size varying at all (texel size read from the `SourceSize`
+      uniform instead); every neighbor tap is `texelFetch(base + offset)` computed in the fragment
+      shader
+- [ ] Varying count verified ≤16 vec4 on Adreno 6xx — no physical device available in this
+      environment (same limitation as T-006/T-021/T-018); the compiled reflection shows 1 varying,
+      trivially within any GLES 3.1 floor, but that's not the same as a device-verified claim
+- [ ] `textureGather` used where available, with the T-005 fallback path if required — not attempted;
+      every tap is an individual `texelFetch`, matching what each contributing debug shader already
+      verified. Real, tracked perf optimization (`tools/fusion/report.md`), deliberately out of this
+      ticket's scope to avoid re-verifying the fetch pattern from scratch without a bandwidth/frame-
+      time measurement (T-021/T-022) to check it against
+- [ ] `mediump` precision (per this ticket's own prose and FR8/§5) — kept `highp` throughout, same as
+      every contributing debug shader. This was flagged as this ticket's job by T-015's own report
+      (`tools/classifier_gpu/report.md` Finding 3: the variance accumulator can overflow real `fp16`
+      `mediump` on hardware this environment's `mediump`-as-`fp32` software path can't reproduce) —
+      not attempted here; downgrading precision without a real device to catch an overflow regression
+      would be an unverified change, which this project's discipline doesn't ship
 
 ### T-021 — Bandwidth (B/px) instrumentation
 **Track B · M · depends on T-006**

@@ -102,10 +102,30 @@ acceptance box is left open with the full comparison table, not checked off.
 Still genuinely blocked — real handheld bring-up (T-006), a real-game content corpus (T-007), and the
 copyleft half of cataloging existing shaders' failure modes (T-011) — need a physical reference device
 or a human call on licensing/content sourcing, not a tooling gap. Each is documented in
-`docs/backlog-status.md` with what specifically would unblock it. With T-015/T-016/T-017/T-018/T-019
-all done, **T-020** (fuse into the single shipped mobile-lite pass, critical path) has no remaining
-Phase 1 ticket blocking it — see `docs/backlog-status.md` for what's still worth carrying forward into
-it (T-018's Omniscale gap, T-041's classifier separability) even though neither blocks starting.
+`docs/backlog-status.md` with what specifically would unblock it.
+
+**Update, 2026-09-17 (continued once more): T-020 is built — mobile-lite is now a real, shippable
+shader, not a skeleton.** `shaders/shaders_slang/argus/shaders/mobile-lite.slang` fuses T-016's
+classifier with T-017/T-018/T-019's per-class reconstruction rules into the single output-resolution
+pass FR3 requires. Fusion is verified exact against each already-correct contributing debug shader
+(0-pixel difference, not a tolerance pass — see `tools/fusion/report.md`), the compile gate passes
+clean on all five backends, and the render harness's 60 regression goldens all match. Along the way
+this ticket found and fixed a real gap in the render harness's own goldens: they were pinned at
+`scale0 = 1.0` (inherited from T-013's original passthrough skeleton), which made T-018's edge
+reconstruction a mathematical no-op — a clean "PASS" that was silently checking nothing of this
+ticket's logic. Fixed by testing at `scale0 = 4.0` (the middle of the realistic 2x-6x range), with
+every regenerated golden visually spot-checked before committing. **This is the milestone the shader
+is ready for a human to actually look at (UAT)** — see `tools/fusion/report.md`'s visual spot-check
+table, or render any corpus sample through `argus-mobile-lite.slangp` directly.
+
+Two threads carried in from earlier tickets remain open and untouched by T-020 — T-018's honest
+Omniscale non-win (wins 1 of 5 tested scales) and T-041's classifier separability — plus two new ones
+this ticket surfaced: `textureGather` adoption (a tracked perf optimization, not attempted) and the
+`mediump`-vs-`highp` precision question T-015's own report flagged as deferred to T-020 (kept `highp`
+throughout; downgrading without real hardware to catch an overflow regression would be an unverified
+change). None of these block T-020 or UAT. **T-022** (Phase 1 exit validation — perceptual comparison,
+bandwidth, frame time, false-positive-rate threshold) is the next item on the critical path and has
+explicitly not been run yet; T-040's legacy-pack port of this fused logic also remains open.
 
 ## Project structure
 

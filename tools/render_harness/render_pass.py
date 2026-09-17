@@ -15,6 +15,7 @@ multi-pass tier needs it.
 import argparse
 import ctypes
 import hashlib
+import re
 import sys
 from pathlib import Path
 
@@ -34,6 +35,29 @@ QUAD_POSITIONS = np.array(
     [-1, -1, 0, 1, 1, -1, 0, 1, -1, 1, 0, 1, 1, 1, 0, 1], dtype=np.float32
 )
 QUAD_TEXCOORDS = np.array([0, 1, 1, 1, 0, 0, 1, 0], dtype=np.float32)
+
+_PRAGMA_PARAMETER_RE = re.compile(
+    r'#pragma\s+parameter\s+(\w+)\s+"[^"]*"\s+([+-]?[\d.eE+-]+)'
+)
+
+
+def parse_pragma_parameter_defaults(slang_path: Path) -> dict:
+    """T-020 addition: RetroArch's real default for a `#pragma parameter`
+    is its declared default value, not 0.0 — but every render_pass() caller
+    before T-020 passed `params={}` and it didn't matter, because no shipped
+    shader read its own parameters yet (T-013/T-040's skeletons declared FR5
+    params without using them). Now that mobile-lite.slang actually reads
+    ARGUS_EDGE_THRESHOLD/ARGUS_DITHER_STRENGTH, rendering it with an empty
+    params dict silently tests threshold=0 (maximally sensitive) and
+    strength=0 (least dither preservation) instead of what a user actually
+    sees — a real gap this ticket found, not a hypothetical one. Callers
+    that want default-parameter behavior (the golden harness) should merge
+    this dict into their own explicit overrides, not pass `{}`."""
+    defaults = {}
+    for match in _PRAGMA_PARAMETER_RE.finditer(slang_path.read_text()):
+        name, default_str = match.groups()
+        defaults[name] = float(default_str)
+    return defaults
 
 
 def compile_to_gles(slang_path: Path, tmpdir: Path):

@@ -25,7 +25,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from render_pass import render_pass
+from render_pass import render_pass, parse_pragma_parameter_defaults
 from compare_golden import compare
 from PIL import Image
 
@@ -82,11 +82,17 @@ def main():
     with tempfile.TemporaryDirectory() as td:
         tmpdir = Path(td)
         for preset_name, shader0, scale0 in presets:
+            # T-020: render at each parameter's declared #pragma parameter
+            # default, not an implicit all-zero — see
+            # parse_pragma_parameter_defaults()'s docstring for why this
+            # started mattering only once a shipped shader (mobile-lite.slang)
+            # actually read its own parameters.
+            param_defaults = parse_pragma_parameter_defaults(shader0)
             for content_path in content:
                 rel = content_path.relative_to(CORPUS_DIR)
                 golden_path = GOLDENS_DIR / preset_name / rel
 
-                frame = render_pass(shader0, content_path, scale0, tmpdir, {})
+                frame = render_pass(shader0, content_path, scale0, tmpdir, param_defaults)
 
                 if args.update_goldens:
                     golden_path.parent.mkdir(parents=True, exist_ok=True)
