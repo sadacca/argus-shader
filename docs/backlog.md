@@ -459,13 +459,46 @@ assumed achievable as mobile-lite currently stands** without either real hardwar
 contrary or a design change — flagged here as new scope for whoever picks up T-006/T-021/T-022 next,
 not asserted as a T-022 failure this ticket isn't positioned to call.
 
+### T-044 — Sub-pixel corner/curve regression vs. nearest-neighbour on text (added 2026-09-19)
+**Track A · S · depends on T-018, T-042 · new scope**
+T-042's headline table shows argus-mobile-lite scoring *below* nearest-neighbour on IoU for
+`letter_A` (94.0% vs 94.2%) — surprising given T-017/T-020's established pixel-identical output on
+T-010's own crisp text corpus. Investigated rather than left as an unremarked number:
+`tools/eval_metric/text_legibility_diff.py` splits argus/NN pixel disagreements into "boundary"
+(nearest-neighbour's own blocky upscale already disagrees with ground truth there — not a regression)
+and "interior" (NN matches ground truth, argus doesn't — the bucket that would actually mean a
+legibility regression).
+- [x] Quantified: 174/147456 px (`letter_A`), 215/147456 px (`letter_g`) — both ~0.1-0.6% of the
+      image — are pixel-wrong-vs-ground-truth where nearest-neighbour is pixel-right
+- [x] Visually audited (`tools/eval_metric/audit/letter_*_legibility_regression.png`, wrong pixels
+      painted red on ground truth): every one sits exactly on curved strokes or sharp corners
+      (the A's apex and inner-triangle corners; the g's bowl curve and terminal) — never in flat
+      interior regions away from any stroke
+- [x] Root cause identified, not just measured: this is the same **compass-snapping limitation
+      T-018's own report.md already documents** (the topology LUT's 8 discrete directions
+      approximate a continuous curve or off-compass corner angle imperfectly) manifesting on a
+      different, anti-aliased-letterform corpus (T-042) rather than T-010's crisp hand-drawn one —
+      not a new, unrelated bug
+- [ ] Legibility judgment call not made here and left open: whether sub-pixel corner rounding on a
+      large supersampled test glyph constitutes a real readability problem for actual small pixel-art
+      text (T-017/FR2's real target) is a different question this metric can't answer on its own
+
+Read plainly against T-022's exact wording ("text legibility no worse than nearest-neighbour"): this
+is not literally true at the pixel level on T-042's corpus. **T-022's text-legibility exit criterion
+should be checked against this finding, not assumed to pass by citing T-011's pixel-identical result
+alone** — that result and this one are both real, from different corpora, and both need to be read
+together. See `tools/eval_metric/text_legibility_report.md`.
+
 ### T-022 — Phase 1 exit validation
 **Track A/B/C · M · depends on T-020, T-021, T-003, T-011**
 Gate Phase 1 against §10 exit criteria.
-- [ ] ≤ 8 B/px measured on reference handheld
+- [ ] ≤ 8 B/px measured on reference handheld — see **T-043**: an analytical lower bound already
+      exceeds this ceiling at every realistic scale; do not assume this box is a formality
 - [ ] 60fps at 1080p on reference handheld
 - [ ] Beats nearest-neighbour and SABR on the perceptual set
-- [ ] Text legibility no worse than nearest-neighbour
+- [ ] Text legibility no worse than nearest-neighbour — see **T-044**: literally true at the pixel
+      level, not quite; a small, well-understood, corner/curve-only regression exists on T-042's
+      corpus. Needs a legibility judgment call, not an automatic pass
 - [ ] False-positive rate on T-010 within threshold
 - [ ] Goldens committed for all tiers/backends
 

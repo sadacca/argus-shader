@@ -162,6 +162,17 @@ plainly rather than left for T-006's hardware to discover later: **T-022 should 
 pass its ≤8 B/px exit criterion as mobile-lite currently stands.** See
 `tools/bandwidth_estimate/report.md`.
 
+**Update, 2026-09-19 (continued): T-044, a small, real, well-understood text regression.** T-042's
+own table showed argus-mobile-lite scoring *below* nearest-neighbour on `letter_A` — investigated
+rather than cited at face value (`tools/eval_metric/text_legibility_diff.py`). Found a real but small
+regression (174/215 pixels on `letter_A`/`letter_g`, ~0.1-0.6% of the image) and visually confirmed
+every one sits on a curved stroke or sharp corner, never a flat interior — the same compass-snapping
+limitation T-018 already documented, showing up on a different, anti-aliased corpus. **T-022's "text
+legibility no worse than nearest-neighbour" box should be checked against this finding, not assumed
+to pass by citing T-011's pixel-identical result alone.** Two of T-022's six exit criteria now have
+concrete, hardware-independent evidence against a clean pass (T-043, T-044); see
+`docs/backlog-status.md`'s latest update for the full picture of where T-022 actually stands.
+
 ## Project structure
 
 ```

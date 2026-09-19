@@ -490,6 +490,41 @@ hardware to discover it. **T-022 should not be treated as a pass on the ≤8 B/p
 either real measurement evidence or a design change**, and this is now on record in both T-021's and
 T-022's own backlog entries for whoever picks this up next.
 
-Committed alongside this write-up. Branch remains unpushed at time of writing (pending: push before
-ending this session, per this repo's now-resolved SSH-key/`workflow`-scope auth story — see project
-memory, not repeated here).
+Committed alongside this write-up (`777e486`) and pushed.
+
+## Update — 2026-09-19 (continued: T-044 — a small, real, well-understood text regression found)
+
+Kept pulling the T-022 thread. T-042's own headline table has a number worth explaining rather than
+citing at face value: argus-mobile-lite scores *below* nearest-neighbour on IoU for `letter_A` (94.0%
+vs 94.2%) — surprising, since T-017/T-020 established pixel-identical output on T-010's own text
+corpus. Built `tools/eval_metric/text_legibility_diff.py` to find out why rather than guess: splits
+every argus/NN disagreement pixel into "boundary" (nearest-neighbour's own blocky upscale already
+disagrees with ground truth there — an inherently ambiguous anti-aliased zone, not a regression) and
+"interior" (NN matches ground truth, argus doesn't — the bucket that would actually mean a legibility
+regression against the naive baseline).
+
+**Result, opened as T-044**: a real but small and well-localized regression — 174 px on `letter_A`,
+215 px on `letter_g` (~0.1-0.6% of the image), all of them genuinely wrong against ground truth where
+NN is right. Before writing this up as either "nothing" or "a real problem," visually audited where
+those pixels actually fall (`tools/eval_metric/audit/letter_*_legibility_regression.png` — wrong
+pixels painted red on ground truth): every single one sits exactly on a curved stroke or sharp corner
+(the A's apex and inner-triangle corners; the g's bowl curve and terminal), never in a flat interior
+region. That location pattern matches **T-018's own already-documented compass-snapping limitation**
+(the topology LUT's 8 discrete directions approximate a continuous curve or off-compass angle
+imperfectly) showing up on a different corpus (T-042's anti-aliased letterforms) rather than a new,
+unrelated bug — checked this against T-018's report before concluding it, not just eyeballed.
+
+**Left an honest gap deliberately, not resolved here**: whether sub-pixel corner rounding on a large
+supersampled test glyph constitutes a real *readability* problem for the small pixel-art text FR2/
+T-017 actually targets is a judgment call this metric can't make on its own — recorded as open in
+T-044 rather than asserted either way. Updated T-022's own "text legibility no worse than
+nearest-neighbour" box to point at this finding rather than let it be assumed to pass by citing
+T-011's pixel-identical result alone; both are real and need to be read together.
+
+**Where T-022 actually stands now, after two sessions of digging into its dependencies without
+hardware**: two of its six exit-criteria boxes now have concrete, hardware-independent evidence
+against a clean pass (T-043's bandwidth lower bound already over budget; T-044's small text
+regression), one depends on a licensing call still pending with the user (SABR, T-011), and the
+frame-time/false-positive-rate/goldens-coverage boxes are untouched this session. T-022 itself should
+not be run and checked off as if these were formalities — they're real, documented, open questions.
+Committed (T-044's tooling + this write-up) and pushed.
