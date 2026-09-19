@@ -226,6 +226,19 @@ and this table: https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU. Also added
 `docs/retroarch-testing.md` for real side-by-side testing — the shader pack itself needs no further
 work, just install steps.
 
+**Update, 2026-09-19 (continued): T-046, iterative score optimization — one real near-miss caught.**
+Asked to maximize the IoU score, including trying multi-pass architectures. Named the tension first:
+IoU against an antialiased ground truth rewards smoothing, the opposite of what FR2/T-017 are for.
+Built `tools/score_optimization/score_variant.py` and ran real experiments: disabling T-018's edge
+reconstruction or T-017's text protection didn't help (the gap to xBRZ/SABR/ScaleFX isn't about
+protecting text costing score — it's that this project's own reconstruction algorithm is less accurate
+where it engages). A blend-steepness tweak that looked like a genuine +1.8pp win on the RPG content
+**reversed under T-018's own more rigorous, angle-diverse sub-pixel accuracy metric** (46% worse,
+flips from beating nearest-neighbour to losing to it) — the shipped constant was already near-optimal;
+the RPG-content proxy just wasn't representative enough to tune against. No shipped change this
+round — reported honestly as a null result, with a concrete, well-evidenced recommendation for the
+real next step (improve T-018's algorithm itself, or pursue T-023's native-res classification pass).
+
 ## Project structure
 
 ```

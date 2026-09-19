@@ -567,6 +567,66 @@ should be checked against this finding, not assumed to pass by citing T-011's pi
 alone** — that result and this one are both real, from different corpora, and both need to be read
 together. See `tools/eval_metric/text_legibility_report.md`.
 
+### T-046 — Iterative score-optimization experiments against the RPG IoU rubric (added 2026-09-19)
+**Track A · S · depends on T-018, T-044 · new scope**
+User request, after the honest RPG comparison landed (T-011/T-022's rpg_text_eval.py): build an
+iterative loop for trying to improve argus-mobile-lite's score against the same IoU rubric, and
+explicitly floated abandoning the single-output-resolution-pass constraint (FR3) if it helps. Named
+first, before any tuning: **the IoU metric and this project's actual goal are in real tension** — IoU
+against a fully-antialiased supersampled ground truth mechanically rewards smoothing, which is the
+opposite of FR2/T-017's legibility-preservation goal. Maximizing this number and maximizing "looks
+right for retro game text" are different objectives past some point, not the same one phrased two
+ways.
+
+Built `tools/score_optimization/score_variant.py` (scores an arbitrary single-pass candidate against
+the same rubric as `rpg_text_eval.py`, for fast iterate-and-compare) and ran three real experiments
+against the shipped shader before proposing any change:
+
+1. **Disabling T-018's edge reconstruction entirely** (`variant_no_edge_recon.slang`): identical score
+   on `rpg_dialogue_box` (edge reconstruction never triggers — box border and text both classify as
+   stroke/flat on this content) and *worse* on `rpg_letters` (89.02% → 88.31%, removing it hurts).
+   Edge reconstruction is net-positive where it engages, not the problem.
+2. **Disabling T-017's text/stroke protection** (`variant_no_stroke_protect.slang`, a ceiling probe —
+   route stroke-classified pixels through edge reconstruction instead of hard-preserving them): did
+   **not** meaningfully improve score, and slightly *hurt* `rpg_dialogue_box` (82.00% → 81.72%). This
+   is the important finding: **the IoU gap to xBRZ/SABR/ScaleFX is not explained by "we protect text
+   and they don't"** — even where this project's own reconstruction algorithm is allowed to engage on
+   this content, it isn't as accurate as theirs. The legibility-vs-score tension named above is less
+   of a live trade than it first looked, for this specific content: there's no large score buried
+   behind the protection to trade away.
+3. **Sweeping T-018's edge-directed blend steepness** (`t = clamp(dist * N, 0, 1)`, `N` swept
+   0.5-4.0): found `N≈1.0-1.25` improves both RPG scenes by up to +1.8pp over the shipped `N=2.0` —
+   looked like a real, legibility-safe, one-line win. **Cross-checked against T-018's own established,
+   more rigorous metric before trusting it** (`tools/edge_reconstruct/verify_gpu.py`'s sub-pixel
+   edge-position error against the diagonal sweep's analytic ground truth, spanning 15°-75° angles,
+   not just the RPG content's near-axis-aligned box borders and text strokes) — **and the "improvement"
+   reverses there**: `N=1.0` raises the error from the shipped `1.051px` to `1.539px` (a 46% regression,
+   flips from beating nearest-neighbour to losing to it, and from winning 1/5 scales vs Omniscale to
+   winning 0/5). Confirmed the original `N=2.0` baseline exactly reproduces T-018's own report numbers
+   first, so this isn't a harness mismatch. **The shipped `N=2.0` is a genuine, already-near-optimal
+   choice on the metric that actually generalizes** — my RPG-content proxy metric, dominated by
+   near-axis-aligned edges, was not representative enough to guide this specific tuning, and following
+   it blindly would have shipped a real regression on general edge/curve content.
+- [x] Iterative scoring tool built and reused across 5+ variants in one session
+- [x] Three concrete hypotheses tested with real before/after numbers, not speculation
+- [x] A promising-looking win caught and rejected before shipping, by cross-checking against a
+      second, more rigorous, more general metric rather than trusting the first one that improved
+- [ ] No shipped behavior change resulted — none of the tested variants survived cross-validation.
+      **Recommended next real step, not attempted here**: improve T-018's edge-reconstruction
+      algorithm itself (the compass-snapping limitation T-018/T-044 both already document is the
+      actual, better-evidenced target) rather than re-tuning its existing parameters, and/or pursue a
+      native-resolution classification pass (T-023, already Phase 2 scope) — separating classification
+      from reconstruction would both ease T-043's already-documented bandwidth overage *and* allow a
+      more expensive, more accurate reconstruction step, two independent reasons converging on the
+      same architecture change. Either is real algorithm/architecture work deserving its own session
+      with room to verify carefully, not a rushed follow-on to this one.
+
+**Lesson worth keeping**: this project already had exactly the right tool for catching this
+(`tools/edge_reconstruct/verify_gpu.py`'s angle-diverse analytic metric) built from T-018 onward — the
+near-miss here was almost trusting a narrower, session-local proxy metric instead of checking a new
+tuning against it. Any future edge-reconstruction tuning should be checked against both the RPG/T-042
+IoU rubric *and* the diagonal-sweep sub-pixel metric before being treated as a real improvement.
+
 ### T-022 — Phase 1 exit validation
 **Track A/B/C · M · depends on T-020, T-021, T-003, T-011**
 Gate Phase 1 against §10 exit criteria.
