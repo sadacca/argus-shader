@@ -725,3 +725,58 @@ architecture change. Full writeup in `docs/backlog.md`'s T-046 entry.
 **Kept the discipline that caught this**: any future edge-reconstruction tuning gets checked against
 both the RPG/T-042 IoU rubric and the diagonal-sweep sub-pixel metric before being called an
 improvement — this session is the reason that rule exists now, not a hypothetical.
+
+## Update — 2026-09-19 (continued: T-047 — real RetroArch findings force a rethink)
+
+The user ran argus-mobile-lite and xBRZ side-by-side in a real RetroArch install and reported two
+serious problems, in their own words: **"argus is slow and nearly unplayable whereas xbrz is fast...
+argus has no benefit whatsoever to smoothing... xbrz looks great (and is performant)... argus is
+worse than nothing."** They gitignored two screenshots into the repo directory for review (deleted
+from git tracking immediately, per their request — real game content, not redistributable) and
+concluded, correctly: "our initial test cases were WAY off."
+
+**Performance**: inspected the actual compiled GLES output (not just source) and found a real,
+concrete, mechanistic explanation — `mobile-lite.slang`'s classification kernel writes all 25 taps of
+its 5x5 neighborhood into local arrays (`C[25]`, `L[25]`) in one loop, then reads those arrays back
+across five *separate* subsequent loops (mean, variance, checkerboard, luma-bin popcount, foreground
+comparisons). Dynamically-indexed local arrays spanning multiple loop bodies are a well-known GPU
+shader performance anti-pattern most compilers can't keep in registers — likely spilled to slow
+per-thread scratch memory on real hardware, turning "25 texture fetches" into far more actual memory
+traffic than that number suggests. This is invisible to every check this project has run so far:
+llvmpipe (the only environment available here) doesn't model real GPU register allocation costs, and
+T-043's own bandwidth estimate only counted texture-fetch traffic, not this. Not confirmed against
+real hardware (none available here, same limitation as T-006 throughout) — a strong, evidenced
+hypothesis, not a proven root cause, but concrete enough to prioritize fixing.
+
+**Visual quality**: built the gold-standard eval harness the user specified directly —
+`tools/gold_eval/`, the two shapes hardest for smoothers (a sharp **V** corner, a continuously-curved
+**O** ring), each scored against **two separate ground-truth regimes**: **vector** (a real smooth
+source exists, tests recovering it) and **8bit** (drawn blocky at native resolution directly, no
+hidden smooth source, tests *not* smoothing something never meant to be smooth). This operationalizes
+the tension T-046 already named, instead of leaving it implicit in one metric choice.
+
+**Result, split cleanly by regime**:
+- Vector regime: argus-mobile-lite is worst or second-worst of every candidate on both shapes — ties
+  or loses to plain nearest-neighbour, while xBRZ/SABR/ScaleFX all beat nearest-neighbour by 9-13
+  points. Visual audit shows why: argus's output is nearly indistinguishable from blocky
+  nearest-neighbour, plus a newly-found visible artifact right at the sharp vertex.
+- 8bit regime: argus-mobile-lite is the *best* of every candidate at leaving genuinely blocky pixel
+  art alone — real confirmation that T-016/T-017's classifier does what it was built to do.
+
+Both are true, measured, and real. The RPG dialogue-box content that showed only a narrow gap
+(T-011/T-022) turns out to have been dominated by near-axis-aligned box borders and plain text, almost
+entirely bypassing T-018's edge reconstruction (T-046's own experiment 1 already showed this: disabling
+edge reconstruction didn't change that content's score at all). The gold-eval's V/O shapes exercise
+exactly the path the RPG content mostly missed — which is exactly why the user's real screenshots (full
+of curves, gradients, glow effects) showed a starker gap than the earlier synthetic tests did.
+
+**Conclusion**: not a tuning problem (T-046 already ruled that out) — argus-mobile-lite has a real
+strength (blocky-art preservation, best of any tested candidate) and a real, severe weakness
+(smooth-edge recovery, worst of any tested candidate), on top of a likely serious unfixed performance
+problem. Real game content mixes both regimes constantly, so a shader strong on only one axis reads as
+broadly worse in play — consistent with what was reported. Proposed next steps (not started, T-047 is
+the evidence base): fix the performance anti-pattern first (useless to improve quality on an unplayable
+shader), then replace T-018's edge-reconstruction algorithm itself (not retune it — T-046 already
+closed that door), likely alongside T-023's native-resolution classification pass (now doubly
+motivated: bandwidth *and* accuracy). Each is real, multi-session-sized work, deliberately not
+attempted in this same pass.
