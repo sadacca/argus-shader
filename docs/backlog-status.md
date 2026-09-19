@@ -528,3 +528,48 @@ regression), one depends on a licensing call still pending with the user (SABR, 
 frame-time/false-positive-rate/goldens-coverage boxes are untouched this session. T-022 itself should
 not be run and checked off as if these were formalities — they're real, documented, open questions.
 Committed (T-044's tooling + this write-up) and pushed.
+
+## Update — 2026-09-19 (continued: T-045 — a real bug in T-040's foundation, caught before it shipped)
+
+With T-022's dependencies as investigated as they can get without hardware or a licensing decision,
+turned to T-040 (legacy `.glslp`/`.glsl` pack) — real, unblocked Phase 1 scope, still open. Before
+porting T-020's actual math into the legacy skeleton, checked how the file's compiled GLSL version
+actually gets decided by a real RetroArch install, rather than assume the existing skeleton (built
+2026-09-17, currently a passthrough) already had this right. Fetched RetroArch's real legacy driver
+source directly (`gfx/drivers_shader/shader_glsl.c` from github.com/libretro/RetroArch@master, via
+`gh`/`curl`) and read `gl_glsl_compile_shader()` rather than rely on the previous session's header-
+comment claims about it.
+
+**Found two real, structural problems, both fixed before any reconstruction logic touched the file:**
+
+1. The skeleton had **no `#version` line at all**. RetroArch's driver only substitutes a version when
+   the file declares one itself; with none present, none is injected, and the file compiles under the
+   implicit GLSL ES 1.00 default — incompatible with `texelFetch`/`in`/`out`/`bitCount` outright, which
+   the real ported logic needs (same functions T-015's port already needed ES 3.10 for).
+2. Even declaring *some* version wouldn't have been enough. The real driver remaps a declared version
+   on GLES3-capable targets: `[130, 330)` maps to `"300 es"`, exactly `330` maps to `"310 es"`, `>330`
+   maps to `"320 es"`. This project's own T-005 floor needs ES 3.10 specifically (`bitCount()`) — so
+   the file must declare **exactly** `#version 330`, not the `130` its own COMPAT_* macros merely
+   check for. Declaring 130 (the seemingly-safe, more-conservative choice) would have silently capped
+   real mobile hardware at "300 es" and failed to compile the ported logic later — the exact shape of
+   bug this project has now caught four times (GLES-300-vs-310, the CI globstar gap, T-018's Mesa
+   texelFetch miscompilation, and now this) — each time by checking real tool/driver behavior instead
+   of trusting an existing comment or assumption.
+
+**Fixed, not just diagnosed**: `mobile-lite.glsl` now declares `#version 330` as its literal first
+line (with the full remap table and source citation in a header comment), and
+`tools/compile_gate/compile_check_legacy.py` was rewritten to simulate the real remap instead of
+externally forcing a version line in front of the file's own text (which both misrepresented real
+driver behavior *and* stopped being syntactically valid the moment the file declares its own
+`#version` — GLSL forbids two). Verified the corrected gate passes clean on both real gating targets
+(desktop verbatim, GLES3.1+ remapped) for the still-passthrough skeleton, and confirmed nothing else
+regressed: the slang compile gate and all 60 render-harness goldens still pass unchanged (this work
+touched only the legacy pack).
+
+**Deliberately stopped here, not pushed further into the actual math port**: T-040's real logic port
+(fusing T-020's classifier + reconstruction rules into this now-correctly-versioned file) and a
+legacy-pipeline render harness (to verify golden parity against the slang pass, T-040's own still-open
+acceptance box) remain open, tracked under T-040 itself. Building those on top of a freshly-fixed
+foundation without room left to verify them with the same care T-015-T-020 each got would risk
+shipping something that looks done but isn't — opened as **T-045** (the foundation fix, complete and
+verified) rather than folded into a rushed, incomplete attempt at T-040's full scope.

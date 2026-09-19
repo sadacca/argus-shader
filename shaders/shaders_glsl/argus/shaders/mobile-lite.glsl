@@ -1,3 +1,4 @@
+#version 330
 /*
    T-040 — root legacy GLSL skeleton for the mobile-lite tier, counterpart to
    shaders_slang/argus/shaders/mobile-lite.slang (T-013). Independently
@@ -15,6 +16,28 @@
    validating this file against a real driver: some upstream community
    shaders declare `out vec4 FragColor;` before their precision statement,
    which strict GLSL ES 3.00 frontends reject).
+
+   T-045 finding, fixed here: the `#version 330` line above is not this
+   file's actual compiled version — RetroArch's gl_glsl_compile_shader()
+   strips it and substitutes its own, remapped from the number this file
+   declares (source read directly from github.com/libretro/RetroArch
+   gfx/drivers_shader/shader_glsl.c, `gl_glsl_compile_shader()`, 2026-09-19):
+   on a GLES3-capable target, a declared version in [130, 330) remaps to
+   "300 es", exactly 330 remaps to "310 es", and >330 remaps to "320 es";
+   on desktop GL it's used verbatim. Declaring anything other than exactly
+   330 here (e.g. the seemingly-more-conservative 130 the COMPAT_* macros
+   below merely require) would silently cap this file at GLES "300 es" on
+   real mobile hardware — one version short of the ES 3.10 this project's
+   own T-005/docs/gles-floor.md floor requires for `bitCount()`, which the
+   real reconstruction logic (once ported) needs. This file previously had
+   no `#version` line at all, which is worse still: with no existing_version
+   for the driver to find, no version is injected at all and the shader
+   compiles under the GLSL ES 1.00 implicit default — incompatible with
+   `texelFetch`/`in`/`out`/`bitCount` outright. See docs/backlog.md T-045 for
+   the full investigation and why `tools/compile_gate/compile_check_legacy.py`'s
+   current profile list does not yet test any of this correctly (it injects
+   a version line externally, which is not how the real driver negotiates
+   one once the file declares its own).
 
    Declares the FR5 tunables (docs/requirements.md); reconstruction logic is
    not implemented yet — passthrough for now. See mobile-lite.slang's header

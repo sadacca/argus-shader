@@ -202,6 +202,11 @@ parameters declared, passing both T-002's compile gate and a T-003 render/golden
 - [x] Compiles clean on all backends via T-002
 
 ### T-040 — Legacy `.glslp`/`.glsl` preset pack (added 2026-09-17)
+**Status: version-negotiation foundation fixed 2026-09-19, math port still open — see T-045.** Before
+porting T-020's real logic in, verified against RetroArch's actual driver source how this file's
+compiled GLSL version gets negotiated — found and fixed two real bugs in the existing skeleton (no
+`#version` line at all; the compile gate's own version-testing methodology didn't match real driver
+behavior). The skeleton itself is still a passthrough; T-020's math is not yet ported.
 **Track A · L · depends on T-013 (skeleton), tracks T-017/T-018/T-019/T-020 as each lands · new scope**
 Ship a second, independently-formatted preset pack for RetroArch's older GLSL shader driver
 (`.glslp` preset + single-file `.glsl` using `#if defined(VERTEX)`/`#elif defined(FRAGMENT)`
@@ -231,6 +236,47 @@ directly; only the file structure, stage-selection mechanism, and uniform/varyin
       and any feature the legacy driver cannot express (e.g., `OriginalHistory#` semantics for FR4 —
       confirm the legacy driver's history/feedback support before T-025 lands, since the two drivers'
       history models may not be equivalent)
+
+### T-045 — Legacy driver version negotiation was wrong; fixed before any real logic landed (added 2026-09-19)
+**Track A · S · depends on T-040 · new scope**
+Investigated before starting T-040's actual math port (porting mobile-lite.slang's fused logic to
+`mobile-lite.glsl` needs `texelFetch`/`bitCount`, so getting the compiled GLSL version right is a
+prerequisite, not a detail). Read RetroArch's real legacy driver source directly
+(`gfx/drivers_shader/shader_glsl.c`, `gl_glsl_compile_shader()`, github.com/libretro/RetroArch@master,
+fetched 2026-09-19) rather than assume the skeleton's existing structure was already correct.
+**Found two real, structural problems, both now fixed:**
+1. **The skeleton had no `#version` line at all.** RetroArch's driver only computes a substitute
+   version when the file declares its own (`existing_version` in the real source); with none present,
+   *no* version gets injected and the file compiles under the implicit GLSL ES 1.00 default —
+   incompatible with `texelFetch`/`in`/`out`/`bitCount` outright, not merely a lesser version of them.
+2. **Even a declared version wouldn't have been enough at just any number.** The real driver remaps a
+   declared version on GLES3-capable targets: `[130, 330)` → `"300 es"`, exactly `330` → `"310 es"`,
+   `>330` → `"320 es"`. This project's own T-005 floor (`docs/gles-floor.md`) needs ES 3.10 specifically
+   for `bitCount()` — so the file must declare **exactly** `#version 330`, not the `130` its own
+   COMPAT_* macros merely check for (`#if __VERSION__ >= 130`), or real mobile hardware would silently
+   get capped at "300 es" and fail to compile the ported logic.
+- [x] `shaders/shaders_glsl/argus/shaders/mobile-lite.glsl` now declares `#version 330` as its literal
+      first line, with the full remap table and citation in a header comment
+- [x] `tools/compile_gate/compile_check_legacy.py` rewritten to simulate the real remap (previously it
+      externally forced a version line in front of the file's own text — which both didn't reflect real
+      driver behavior *and* stopped being syntactically possible the moment the file declares its own
+      `#version`, GLSL forbidding two). Now tests the three real outcomes: desktop (declared version
+      verbatim), GLES3.1+ (the real T-005 target, remapped from the declared version), and GLES-2-only
+      (forced to "100" regardless, non-gating — outside T-005's device matrix, kept only so this file's
+      real behavior there stays on record)
+- [x] Verified: the corrected gate passes clean on both gating targets for the still-passthrough
+      skeleton (`python3 tools/compile_gate/compile_check_legacy.py`)
+- [ ] Not yet done, left for the next pass at T-040 itself: the actual math port (T-020's fused
+      classifier + reconstruction rules into this now-correctly-versioned file) and a legacy-pipeline
+      render harness to verify golden parity against the slang pass — this ticket only fixes the
+      foundation those need, deliberately stopping short of the port itself rather than build it on a
+      newly-verified-correct-but-still-untested-in-practice foundation without room to verify it as
+      carefully as T-015-T-020 each were
+
+This is exactly the class of environment-assumption bug this project's docs already flag watching for
+(GLES-300-vs-310, the CI globstar gap, T-018's Mesa dynamically-indexed-texelFetch miscompilation) —
+a fourth instance, this time caught *before* shipping the affected logic rather than after, because it
+was checked against the real driver source before porting anything into the file it would have broken.
 
 ### T-014 — Generate and bake the 3×3 topology LUT
 **Track A · M · depends on T-001, T-004**

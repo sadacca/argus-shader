@@ -173,6 +173,21 @@ to pass by citing T-011's pixel-identical result alone.** Two of T-022's six exi
 concrete, hardware-independent evidence against a clean pass (T-043, T-044); see
 `docs/backlog-status.md`'s latest update for the full picture of where T-022 actually stands.
 
+**Update, 2026-09-19 (continued): T-045 — a real bug in T-040's foundation, caught before it shipped.**
+Before porting T-020's actual math into the legacy `.glsl` pack, checked how RetroArch's real legacy
+driver decides a shader's compiled GLSL version (read `gl_glsl_compile_shader()` directly from
+github.com/libretro/RetroArch) rather than trust the existing skeleton's own header comments. Found
+two real problems: the skeleton had **no `#version` line at all** (the real driver injects none
+either in that case, silently falling back to GLSL ES 1.00 — incompatible with the `texelFetch`/
+`bitCount` the ported logic needs), and even declaring a version needed the *exact* number `330` —
+the real driver remaps a declared version on GLES3 targets (`330` → `"310 es"`, anything below that
+→ only `"300 es"`), and this project's own T-005 floor needs ES 3.10 specifically. Fixed both:
+`mobile-lite.glsl` now declares `#version 330`, and `tools/compile_gate/compile_check_legacy.py` was
+rewritten to simulate the real remap instead of externally forcing a version (which had also become
+syntactically invalid the moment the file declares its own). Verified nothing else regressed — slang
+gate and all 60 render-harness goldens still pass. The actual math port and a legacy-pipeline render
+harness remain open (T-040), deliberately not attempted on the same pass as this foundation fix.
+
 ## Project structure
 
 ```
