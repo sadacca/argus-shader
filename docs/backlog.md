@@ -136,18 +136,33 @@ rewards over-triggering — the heuristic would appear to succeed by misclassify
 
 ### T-011 — Catalog existing-shader failure cases
 **Track C · M · depends on T-007, T-008, T-012**
-**Status: partially built 2026-09-17** — `tools/comparison/` (`generate_baselines.py`, `report.md`)
-renders the full synthetic corpus through argus-mobile-lite (T-020), Omniscale, and
-nearest-neighbour at matched scale. ScaleFX is vendored (MIT, cleared) but not yet executable — needs
-a multi-pass filter-chain sequencer this project doesn't have (see `tools/comparison/report.md`).
-xBRZ/SABR/HQx execution remains gated on a licensing-scope call. T-007's real-game corpus is still
-needed for full coverage. See `docs/backlog-status.md`.
-- [ ] Every corpus item rendered through all five baselines at matched output resolution — 2 of 5
-      done (nearest-neighbour, Omniscale); ScaleFX vendored but blocked on multi-pass infra;
-      xBRZ/SABR/HQx blocked on a licensing-scope decision
+**Status: 4 of 5 baselines executable as of 2026-09-19** — `tools/comparison/`
+(`generate_baselines.py`, `report.md`) renders the full synthetic corpus through argus-mobile-lite
+(T-020), Omniscale, and nearest-neighbour at matched scale. **Update 2026-09-19**: built
+`tools/render_harness/render_multipass.py` (a real multi-pass filter-chain sequencer, previously
+missing infra) and unblocked SABR (GPLv2+) and ScaleFX (MIT, vendored since 2026-09-17 but
+unexecutable until now); xBRZ (GPLv3, embedded) also now runs. Source for SABR/xBRZ is fetched to a
+scratch location outside this repo for comparison purposes, not vendored into git history — only
+rendered output is committed, matching how `tools/comparison/renders/` is already `.gitignore`d as
+regeneratable. HQx remains blocked, now on a real unresolved bug (renders without error but produces
+a visibly wrong result) rather than licensing — deprioritized given it's also the most legally
+marginal of the three per `docs/licensing.md`. See `docs/backlog-status.md`'s 2026-09-19 update for
+the full bug list found while building the sequencer (vendoring path bugs, missing `#pragma parameter`
+defaults, inconsistent push-constant instance naming across real third-party shaders) and for a
+correction: an earlier update here mischaracterized the SABR/xBRZ/HQx pause as "asked the user
+directly" — that was this project's own conservative choice, not an actual pending user decision; the
+user corrected this directly and gave the go-ahead. T-007's real-game corpus is still needed for full
+coverage. See `docs/backlog-status.md`.
+- [ ] Every corpus item rendered through all five baselines at matched output resolution — 4 of 5
+      baselines now executable (nearest-neighbour, Omniscale, SABR, ScaleFX, xBRZ), but only run
+      against this session's new RPG-style content so far, not yet the full existing synthetic
+      corpus — extending `generate_baselines.py` to cover all four there is tracked follow-up, not
+      done yet. HQx blocked on an unresolved rendering bug.
 - [x] Failure modes catalogued per shader with example crops — see `tools/comparison/report.md`'s
       glyph-preservation finding (Omniscale visibly rounds/smooths protected glyph corners that
-      argus-mobile-lite leaves pixel-identical to nearest-neighbour)
+      argus-mobile-lite leaves pixel-identical to nearest-neighbour), plus the 2026-09-19 RPG
+      dialogue-box/letters comparison (published: https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU)
+      showing the same pattern against SABR/ScaleFX/xBRZ at native RPG text scale
 - [x] Nearest-neighbour included as the honest control (P6)
 
 ### T-042 — Standardized ground-truth overlap eval (added 2026-09-17)

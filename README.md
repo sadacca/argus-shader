@@ -188,6 +188,29 @@ syntactically invalid the moment the file declares its own). Verified nothing el
 gate and all 60 render-harness goldens still pass. The actual math port and a legacy-pipeline render
 harness remain open (T-040), deliberately not attempted on the same pass as this foundation fix.
 
+**Update, 2026-09-19 (continued): T-011 — SABR, ScaleFX, and xBRZ actually running now, with a visual
+comparison published.** Correction first: an earlier update characterized pausing on SABR/xBRZ/HQx as
+"asked the user directly" — that was inaccurate; it was this project's own conservative choice, not a
+decision the user had actually been asked to hold. The user corrected this and gave the go-ahead
+directly. Built `tools/render_harness/render_multipass.py` (a real multi-pass filter-chain sequencer,
+previously missing) and got SABR (GPLv2+, turned out to be single-pass — no new infra needed), ScaleFX
+(MIT, vendored since 2026-09-17 but unexecutable until now), and xBRZ (GPLv3, embedded) all rendering
+correctly — verified via per-channel spatial variance, not just eyeballing, after catching a flattened-
+statistics diagnostic mistake in the process. Building the sequencer found and fixed several real bugs:
+a wrong vendoring path depth for ScaleFX's `stock.slang` reference (never caught because ScaleFX was
+never executed before), unset `#pragma parameter` defaults causing a real NaN-producing divide-by-zero,
+and inconsistent push-constant block naming (`params` vs `registers`) across real third-party shaders.
+HQx was attempted last and set aside — renders without error but produces a visibly wrong result from
+an unresolved bug, and it's also the most legally marginal of the three per `docs/licensing.md`, so
+further debugging wasn't worth chasing given three of four were already newly unblocked. Source for
+SABR/xBRZ is fetched to a scratch location, never vendored into this repo's git history — only
+rendered output is committed. Generated RPG-specific content (`tools/comparison/generate_rpg_text.py`
+— a dialogue box and individual letterforms at native SNES-class resolution) and published a visual
+comparison across all six now-available baselines: **https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU**.
+See `docs/backlog-status.md`'s 2026-09-19 update for the full bug list and what's still not done
+(the newly-unblocked baselines haven't been run against the full existing synthetic corpus yet, only
+this session's new RPG content).
+
 ## Project structure
 
 ```

@@ -410,13 +410,12 @@ so T-018's existing 2x-6x win/loss table (wins 1 of 5) is cited directly rather 
    improvised here — an unverified sequencer risks reporting misleading comparison numbers, worse than
    not having them.
 2. **xBRZ/SABR/HQx** were not vendored or run at all — all three are copyleft with no permissive
-   subset for direct execution, and this is explicitly the kind of licensing-scope call T-011's own
-   backlog entry (and T-018's report, for SABR specifically) already flags as needing the project
-   owner's input, not a call to make unilaterally. **Asked the user directly** whether to make that
-   call now (accept copyleft obligations on comparison-only runs) or keep characterizing those three
-   from published documentation/screenshots instead, per T-011's own already-recommended fallback.
+   subset for direct execution (`docs/licensing.md`, T-001). This was this project's own conservative
+   choice, not a decision the project owner had actually been asked to make and held up — see the
+   2026-09-19 update below for the correction and what changed.
 
-T-011 remains open (2 of 5 baselines actually run), tracked honestly rather than closed early.
+T-011 remains open (2 of 5 baselines actually run at time of writing), tracked honestly rather than
+closed early.
 
 ## Update — 2026-09-18 (picking up an interrupted session: T-042 finished and committed)
 
@@ -573,3 +572,68 @@ acceptance box) remain open, tracked under T-040 itself. Building those on top o
 foundation without room left to verify them with the same care T-015-T-020 each got would risk
 shipping something that looks done but isn't — opened as **T-045** (the foundation fix, complete and
 verified) rather than folded into a rushed, incomplete attempt at T-040's full scope.
+
+## Update — 2026-09-19 (continued: T-011 — SABR, ScaleFX, and xBRZ actually running)
+
+**Correction first**: the 2026-09-18 update above says xBRZ/SABR/HQx execution was "asked the user
+directly" and left pending. The user corrected this directly in conversation — that framing was wrong;
+it was this project's own conservative choice not to vendor copyleft source without checking first, not
+a decision that had actually been put to the user and held up. The user then gave explicit direction to
+proceed. Corrected in place above rather than left standing.
+
+**What changed**: SABR (GPLv2+) and xBRZ (GPLv3, embedded) source was fetched directly from
+`github.com/libretro/slang-shaders` (via `gh`/`curl`) to a scratch location *outside this repo* —
+running them for comparison doesn't require permanently vendoring GPL source into this project's own
+git history, so only their rendered *output* is committed, matching how `tools/comparison/renders/`
+was already `.gitignore`d as regeneratable before this session. SABR turned out to be genuinely
+single-pass (`shaders = 1`) — directly runnable through the existing `render_pass.py`, no new
+infrastructure needed. xBRZ and ScaleFX (already vendored MIT, previously blocked — see 2026-09-17's
+update above) both needed a real multi-pass filter-chain sequencer, which didn't exist yet; built one
+(`tools/render_harness/render_multipass.py`).
+
+**Building the sequencer surfaced real bugs, all found before trusting any output — verified via
+per-channel spatial standard deviation, not just eyeballing, after an early pass that looked flat
+turned out to have real per-channel variance hiding inside a flattened global min/mean/max (a
+diagnostic mistake caught and corrected before drawing conclusions from it):**
+1. **ScaleFX's own vendored `.slangp`/`stock.slang` layout was wrong** — the preset's unmodified
+   `../../stock.slang` reference needs the file two directories up, but the previous session's fetch
+   placed it only one up. Never caught because ScaleFX was never actually executed before now. Fixed
+   by placing an identical copy (`tools/comparison/stock.slang`) where the unmodified preset actually
+   expects it, rather than editing vendored file contents.
+2. **`#pragma parameter` defaults were never being set for third-party passes** — real RetroArch
+   always initializes these to their declared default; leaving them at GL's implicit `0` made
+   ScaleFX's `scalefx-pass1.slang` divide by zero (`params.SFX_CLR`, default `0.50`), producing NaN
+   across the whole frame. Fixed by parsing and setting each pass's own declared defaults
+   (`render_pass.py`'s existing `parse_pragma_parameter_defaults`, already built for T-020).
+3. **The push-constant block's instance name isn't consistent across real third-party shaders** —
+   `params` in ScaleFX/xBRZ/SABR/the shared bicubic passes, `registers` in HQx. Grepped every fetched
+   pass to confirm rather than assume one convention; the sequencer now tries both.
+4. Same directory-depth vendoring bug as #1 recurred for xBRZ/HQx's shared `../../interpolation/`
+   reference — same fix (place a copy at the depth the unmodified preset expects).
+
+**SABR and xBRZ now render correctly and are visually confirmed sane** (real per-channel spatial
+variance, and visual inspection matches each algorithm's known character — SABR's moderate edge
+interpolation, xBRZ's stronger rounding). **HQx was attempted last and set aside**: it renders without
+a crash through the same sequencer but produces a visibly wrong (near-black) result from a remaining
+bug not yet isolated. Given HQx is also the most legally marginal of the three per `docs/licensing.md`
+("conditional; default to no-go") and three of four previously-blocked baselines were already newly
+unblocked, further debugging was deprioritized rather than open-endedly pursued — recorded honestly as
+attempted-but-unresolved, not silently dropped.
+
+**Content and comparison**: rather than only extend the existing synthetic corpus, built RPG-specific
+content per the user's direct request (`tools/comparison/generate_rpg_text.py` — a bordered dialogue
+box with two lines of body text, and a sheet of individual letterforms, both at native SNES-class
+256x224 resolution) and rendered it through all six now-available baselines (nearest-neighbour,
+Omniscale, SABR, ScaleFX, xBRZ, argus-mobile-lite — `tools/comparison/generate_rpg_baselines.py`).
+Published as an Artifact for visual inspection: https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU —
+argus-mobile-lite keeps text pixel-crisp (T-017 working as designed); Omniscale and xBRZ visibly round
+glyph corners and box edges at this native scale; SABR sits between the two.
+
+**What this does and doesn't settle for T-011's own boxes**: "every corpus item rendered through all
+five baselines" is now 4 of 5 executable (SABR/ScaleFX/xBRZ/Omniscale; HQx still blocked, now on a
+technical bug rather than licensing) — a real improvement from 2 of 5, but **the newly-unblocked three
+have only been run against this session's new RPG content, not yet against the full existing synthetic
+corpus** (`dither_ramp`, `checkerboard_transparency`, `diagonal_sweep`, `text_positive`/`text_negative`,
+`glyph_sheet`) the way Omniscale/nearest-neighbour already have via `generate_baselines.py`. Extending
+`generate_baselines.py` itself to include SABR/ScaleFX/xBRZ across that full corpus is real, tracked,
+not-yet-done follow-up work, not silently folded into "done" here.

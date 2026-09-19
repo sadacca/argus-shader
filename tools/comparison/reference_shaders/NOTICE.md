@@ -9,32 +9,32 @@ each pass file's own header, per its terms) — `docs/licensing.md`'s T-001
 determination clears ScaleFX for direct reading, adaptation, and execution
 ("**ScaleFX — go.**").
 
-**This is vendored for T-011's comparison set but is not currently
-executable through this project's render harness.** ScaleFX is a 6-pass
-filter chain with named cross-pass texture aliasing (`scalefx-pass2.slang`
-reads `scalefx_pass0`'s output by its `.slangp` alias name; `scalefx-pass4.slang`
-reads both `Source` and a separate `refpass` alias) and float
-intermediate framebuffers. `tools/render_harness/`'s `render_pass.py` and
-`run_harness.py` are both explicitly single-pass only (see each file's own
-docstring) — there is no multi-pass filter-chain sequencer in this project
-yet (the same category of work Phase 2's T-023/T-024 will eventually need
-for this project's own 2-pass Mobile/mid tier). Building one correctly
-enough to trust a comparison metric against it is real, unverified
-infrastructure work, not something to improvise inline for a comparison
-run — see `tools/comparison/report.md` for what this blocks and what it
-would take to unblock.
+**Update 2026-09-19: now executable.** `tools/render_harness/render_multipass.py` is a real multi-pass
+filter-chain sequencer (handles the named cross-pass aliasing and float intermediate framebuffers
+described below), built once SABR/xBRZ also needed multi-pass execution rather than one improvised for
+ScaleFX alone. Building it found that the `stock.slang` copy alongside this directory (referenced by
+`scalefx.slangp`'s unmodified `shader0 = ../../stock.slang`) was vendored one directory level too
+shallow for that reference to resolve — the preset was never actually executed before, so this was
+never caught. Fixed by placing an identical copy at `tools/comparison/stock.slang` (the depth the
+unmodified preset actually expects), not by editing the vendored preset's own path. See
+`docs/backlog-status.md`'s 2026-09-19 update for the full list of bugs the sequencer surfaced (this
+one plus two more affecting SABR/xBRZ/HQx specifically) and `tools/comparison/generate_rpg_baselines.py`
+for how ScaleFX is now actually run. ScaleFX is a 6-pass filter chain with named cross-pass texture
+aliasing (`scalefx-pass2.slang` reads `scalefx_pass0`'s output by its `.slangp` alias name;
+`scalefx-pass4.slang` reads both `Source` and a separate `refpass` alias) and float intermediate
+framebuffers — all now handled.
 
 Nothing in this directory was copied or adapted into this project's own
 code. Retain the MIT notice embedded in each file if this directory is
 ever redistributed.
 
-**xBRZ, SABR, and HQx are deliberately not vendored here.** Per
-`docs/licensing.md`, all three carry copyleft licenses (GPLv3, GPLv2+, and
-LGPL2.1 respectively) with no permissive subset covering direct execution.
-T-011's own backlog entry already treats even *running* their unmodified
-code for comparison purposes as gated on a human licensing-scope decision
-("accepting GPL/LGPL obligations on specifically those comparison runs"),
-not merely deriving from them — T-018 already established this position
-for SABR specifically (see `tools/edge_reconstruct/reference_shaders/NOTICE.md`);
-this directory follows the same, already-established position for all
-three rather than making a new call unilaterally.
+**xBRZ, SABR, and HQx are still deliberately not vendored here** (source stays out of this repo's own
+git history even now that they're runnable) **but SABR and xBRZ now run**, per the user's direct
+2026-09-19 go-ahead — see `docs/backlog-status.md`'s 2026-09-19 update for the correction to this
+file's earlier "gated on a licensing-scope decision" framing, which had drifted into characterizing
+this project's own conservative choice as a pending user decision that was never actually put to
+them. Their source is fetched to a scratch location outside this repo for comparison runs; only
+rendered *output* is committed (`tools/comparison/renders/` is `.gitignore`d as regeneratable
+regardless). HQx remains unrun here — not on licensing now, but a real unresolved rendering bug (see
+`docs/backlog-status.md`), and it's also the most legally marginal of the three per `docs/licensing.md`
+("conditional; default to no-go"), so it wasn't worth chasing further once the other two were unblocked.
