@@ -452,4 +452,4 @@ No other loose ends found from the interrupted session — `git status` showed o
 directory, nothing half-edited elsewhere, and the branch (`phase1/t003-render-harness-t040-legacy-pack`,
 7 commits through `add9be9`) was already pushed to `origin` in the meantime (see this repo's memory
 for the SSH-key/`workflow`-scope auth story, not repeated here). This T-042 work is commit
-`<pending>` on the same branch; PR still not opened.
+`168a03b` on the same branch; PR still not opened.
