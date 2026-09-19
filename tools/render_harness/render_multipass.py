@@ -202,6 +202,27 @@ def run_preset(slangp_path: Path, source_png: Path, out_scale: float, tmpdir: Pa
             GL.glViewport(0, 0, pass_w, pass_h)
 
             mvp = np.identity(4, dtype=np.float32)
+            if i < n_shaders - 1:
+                # Every pass's fragment shader samples its "Source" (and any
+                # alias) texture with a fixed quad that assumes a top-down
+                # (PNG-convention) input — true only for the very first
+                # pass's freshly-uploaded texture. A previous pass's own FBO
+                # is stored bottom-up (GL's fixed rasterizer convention: clip
+                # y=-1 always rasterizes to the render target's row 0), so
+                # every non-final pass's OUTPUT would otherwise be handed to
+                # the next pass upside down relative to what that pass
+                # expects — and since each pass flips the convention again,
+                # a chain's final orientation depended on its pass *count*
+                # being even or odd, not on anything real (a genuine bug:
+                # confirmed by the RPG dialogue box literally rendering
+                # upside down through ScaleFX's 6-pass chain). Flipping Y
+                # here for every pass except the last keeps every
+                # intermediate FBO in the same top-down convention the next
+                # pass already assumes, so only the final pass's own
+                # readback (the existing, separately-correct np.flipud)
+                # needs to correct for GL's bottom-up glReadPixels order —
+                # exactly matching what already works for a single pass.
+                mvp[1, 1] = -1.0
             source_size = np.array([cur_w, cur_h, 1.0 / cur_w, 1.0 / cur_h], dtype=np.float32)
             output_size = np.array([pass_w, pass_h, 1.0 / pass_w, 1.0 / pass_h], dtype=np.float32)
             ubo_data = np.concatenate([mvp.flatten(), source_size, output_size]).astype(np.float32)

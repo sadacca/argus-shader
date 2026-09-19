@@ -153,6 +153,23 @@ correction: an earlier update here mischaracterized the SABR/xBRZ/HQx pause as "
 directly" — that was this project's own conservative choice, not an actual pending user decision; the
 user corrected this directly and gave the go-ahead. T-007's real-game corpus is still needed for full
 coverage. See `docs/backlog-status.md`.
+
+**Update 2026-09-19 (continued): a real orientation bug, then a numeric comparison with an honest
+result.** The user caught ScaleFX rendering upside down in the first published comparison — a real
+bug in `render_multipass.py` (every pass used a vertex quad assuming a top-down input texture, true
+only for the first pass; each subsequent pass's FBO-sourced input is bottom-up, so a chain's final
+orientation depended on whether its pass count was even or odd — ScaleFX's 6 passes came out flipped,
+xBRZ's 3 happened to be correct by accident). Fixed and re-verified visually. Then built
+`tools/eval_metric/rpg_text_eval.py` (T-042's own supersample-then-downsample ground-truth method,
+applied to RPG content): **xBRZ scores highest on both tested scenes, SABR and ScaleFX both beat
+argus-mobile-lite, and argus-mobile-lite is within noise of plain nearest-neighbour** (82.0% vs 82.0%
+on the dialogue box; 89.0% vs 88.3% on the letters). This does not contradict T-011's original
+`glyph_sheet` finding (argus pixel-identical to nearest-neighbour where Omniscale rounds corners) —
+both are true, but the crispness argus-mobile-lite's text protection preserves does not translate into
+a ground-truth-overlap win on this metric. Republished the comparison with the fix and this table:
+https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU. Also added `docs/retroarch-testing.md` — the
+shader pack itself needs no further work to load in a real RetroArch install; this documents how, and
+states the numeric result up front.
 - [ ] Every corpus item rendered through all five baselines at matched output resolution — 4 of 5
       baselines now executable (nearest-neighbour, Omniscale, SABR, ScaleFX, xBRZ), but only run
       against this session's new RPG-style content so far, not yet the full existing synthetic

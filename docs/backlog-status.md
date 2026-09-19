@@ -637,3 +637,53 @@ corpus** (`dither_ramp`, `checkerboard_transparency`, `diagonal_sweep`, `text_po
 `glyph_sheet`) the way Omniscale/nearest-neighbour already have via `generate_baselines.py`. Extending
 `generate_baselines.py` itself to include SABR/ScaleFX/xBRZ across that full corpus is real, tracked,
 not-yet-done follow-up work, not silently folded into "done" here.
+
+## Update — 2026-09-19 (continued: a real orientation bug in the sequencer, and an honest numeric comparison)
+
+**The user caught a real, serious bug the moment they looked at the published comparison**: ScaleFX's
+output was rendered upside down. Their words: *"I think your assessment is properly bogus. Scalefx is
+rendered upside down and backwards."* They were right, and the root cause was worth understanding
+precisely rather than patched blind.
+
+**Root cause**: `render_multipass.py` used the same fixed vertex quad for every pass, which assumes
+its `Source` input is a freshly-uploaded, top-down (PNG-convention) texture. That's only true for the
+very first pass — every later pass's `Source` is actually a *previous pass's own FBO*, which OpenGL
+stores bottom-up (a fixed rasterizer fact: clip-space y=-1 always lands at the render target's row 0,
+opposite a directly-uploaded texture's row 0). Each pass through the same quad therefore flips the
+image's vertical convention relative to its input — meaning a chain's final orientation depended on
+whether it had an even or odd number of passes, not on anything real. ScaleFX (6 passes, even) came
+out upside down; xBRZ (3 passes, odd) happened to come out correct by accident, which is exactly why
+the earlier "both look fine" visual check didn't catch this — it only checked xBRZ and SABR/ScaleFX's
+letters spot-check, not the actual published dialogue-box render carefully enough.
+
+**Fixed**: negate the Y row of the MVP matrix for every pass except the last, keeping every
+intermediate FBO in the same top-down convention the next pass already assumes, so only the final
+pass's existing (separately-correct) readback flip is needed — exactly matching how the already-proven
+single-pass path works. Verified by regenerating both scenes for both affected baselines (ScaleFX,
+xBRZ) and visually confirming correct orientation, text reading in the right line order, and glyphs
+right-side up. Confirmed the bug was isolated to `render_multipass.py` only — T-042 through T-045
+never touched that code path.
+
+**Then built the numeric comparison the user actually asked for**, rather than continuing to lean on
+visual impressions: `tools/eval_metric/rpg_text_eval.py`, same supersample-then-downsample
+ground-truth method as T-042, applied to the RPG dialogue box and letters across all six baselines.
+**Result, stated plainly**: xBRZ scores highest on both scenes (87.6%, 94.3%), SABR and ScaleFX both
+beat argus-mobile-lite on both scenes, and **argus-mobile-lite is within noise of plain
+nearest-neighbour** (82.0% vs 82.0%; 89.0% vs 88.3%). The user's own read — *"I think our renderer is
+the worst and probably omniscale or xbrz is the best"* — is numerically correct for xBRZ specifically,
+and close to correct more broadly: on this ground-truth-overlap metric, argus-mobile-lite does not
+beat any of the three newly-available baselines, and barely distinguishes itself from doing nothing.
+This is consistent with, not contradicted by, T-011's original `glyph_sheet` finding (argus pixel-
+identical to nearest-neighbour, Omniscale visibly rounding corners) and T-042/T-044's own honest
+non-wins — argus-mobile-lite's nearest-preserving text strategy has a real, separately-documented
+upside (crispness) that simply does not show up as a ground-truth IoU win. Both are true; only one was
+being said out loud before.
+
+Republished the visual comparison with corrected renders and the numeric table folded in:
+https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU.
+
+**Also written**: `docs/retroarch-testing.md` — the actual shader pack (`shaders/shaders_slang/argus/`)
+already compiles clean on all five backends and needs no further work to drop into a real RetroArch
+install; this just documents install/load steps and how to pull SABR/ScaleFX/xBRZ from RetroArch's own
+bundled shader library for a real side-by-side, plus states the numeric result above up front so
+manual testing starts from an accurate expectation rather than the earlier, too-favorable framing.

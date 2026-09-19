@@ -211,6 +211,21 @@ See `docs/backlog-status.md`'s 2026-09-19 update for the full bug list and what'
 (the newly-unblocked baselines haven't been run against the full existing synthetic corpus yet, only
 this session's new RPG content).
 
+**Update, 2026-09-19 (continued): a real orientation bug the user caught, and the honest numeric
+result.** The per-channel spatial-variance check above verified each pass produced real, non-flat
+output — it did not check *orientation*, and ScaleFX's published render was upside down. Root cause:
+`render_multipass.py` used one fixed vertex quad for every pass, correct only for the first pass's
+freshly-uploaded texture — every later pass's FBO-sourced input is stored bottom-up by OpenGL, so each
+pass flips the image's vertical convention, and a chain's final orientation depended on its pass count
+being even or odd (ScaleFX's 6 came out flipped; xBRZ's 3 were accidentally correct). Fixed and
+re-verified visually. Then built `tools/eval_metric/rpg_text_eval.py` (T-042's own ground-truth
+method) for the numeric comparison this always needed: **xBRZ scores highest on both scenes, SABR and
+ScaleFX both beat argus-mobile-lite, and argus-mobile-lite is within noise of plain
+nearest-neighbour** — not the picture the visual-only comparison suggested. Republished with the fix
+and this table: https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU. Also added
+`docs/retroarch-testing.md` for real side-by-side testing — the shader pack itself needs no further
+work, just install steps.
+
 ## Project structure
 
 ```
