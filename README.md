@@ -138,6 +138,16 @@ vendored or run at all — copyleft licenses with no permissive subset for execu
 flags that as a call for the project owner to make, not one to decide unilaterally. See
 `tools/comparison/report.md` for the full breakdown.
 
+**Update, 2026-09-18: T-042, a standardized ground-truth overlap metric, finished and committed** —
+built the same session as T-011 but left uncommitted when that session was interrupted; picked back
+up, re-verified (`run_eval.py` reproduces its own committed report byte-for-byte), and closed out.
+`tools/eval_metric/` scores every executable baseline against IoU of a binarized shape mask from an
+8x-supersampled ground truth, covering a curve and real letterforms rather than only straight lines.
+Reported honestly rather than only citing T-011's favorable glyph result: **argus-mobile-lite loses
+to Omniscale on this metric for 3 of 4 shapes**, winning only on the letterform T-011 already found
+its glyph protection strongest on — a more mixed picture, and the same shape of honest non-win as
+T-018's Omniscale comparison. See `tools/eval_metric/report.md`.
+
 ## Project structure
 
 ```

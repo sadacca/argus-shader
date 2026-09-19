@@ -150,6 +150,35 @@ needed for full coverage. See `docs/backlog-status.md`.
       argus-mobile-lite leaves pixel-identical to nearest-neighbour)
 - [x] Nearest-neighbour included as the honest control (P6)
 
+### T-042 — Standardized ground-truth overlap eval (added 2026-09-17)
+**Track B/C · S · depends on T-011, T-020 · new scope**
+Built the same session as T-011's baseline comparison set: `tools/eval_metric/`
+(`generate_shapes.py`, `run_eval.py`, `report.md`) scores every executable baseline
+(nearest-neighbour, Omniscale, argus-mobile-lite) against a standardized, reproducible ground truth —
+shapes drawn at 8x supersampled resolution and box-downsampled to native, rather than T-008's
+hand-drawn native-res patterns or T-018's single analytic diagonal-sweep formula — using IoU of the
+binarized foreground shape mask as the primary metric (plain pixel accuracy as a secondary, more
+intuitive number). Labeled audit contact sheets (ground truth + every baseline scored) are under
+`tools/eval_metric/audit/`.
+- [x] Reproducible, single-number metric defined and implemented — same fixed luma threshold
+      (derived from the shapes' own known BG/FG colors) applied identically to ground truth and every
+      candidate, not tuned per image; re-running `run_eval.py` reproduces `report.md`'s table exactly
+- [x] Covers more than straight lines — a curve and two real letterforms (DejaVu Sans Bold `A`/`g`),
+      generalizing past T-018's diagonal-only analytic ground truth
+- [ ] Only as broad as the three baselines `tools/comparison/` can actually execute — ScaleFX
+      (multi-pass infra gap) and xBRZ/SABR/HQx (licensing-scope call) are excluded, same as T-011
+- [x] Visually auditable, not just a table — labeled contact sheets under `audit/` let a human
+      confirm the score against what was actually rendered
+
+**Result reported honestly, not cherry-picked**: argus-mobile-lite loses to Omniscale on IoU for 3 of
+the 4 shapes (`diagonal_line_30deg`, `curve_arc`, `letter_A`) and only wins on `letter_g` — see
+`report.md`'s "Reading the result honestly" section for why (Omniscale's smoothing costs it on
+T-011's glyph-fill test but gains it a small, consistent IoU edge on thin strokes/curves). This is a
+different, standardized metric corroborating T-018's own already-honest Omniscale non-win (wins 1 of
+5 tested scales), not a new regression. Feeds T-022's "beats nearest-neighbour and SABR on the
+perceptual set" exit criterion, though it doesn't itself score SABR (excluded same as T-011/T-018) —
+T-022 will still need either a licensing call on SABR or a documented decision to gate exit without it.
+
 ### T-012 — Perceptual A/B comparison harness
 **Track B · S**
 Side-by-side comparison tooling (imgsli or custom) for spot-checks and the community survey (§8).

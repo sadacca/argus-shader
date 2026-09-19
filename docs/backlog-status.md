@@ -417,3 +417,39 @@ so T-018's existing 2x-6x win/loss table (wins 1 of 5) is cited directly rather 
    from published documentation/screenshots instead, per T-011's own already-recommended fallback.
 
 T-011 remains open (2 of 5 baselines actually run), tracked honestly rather than closed early.
+
+## Update — 2026-09-18 (picking up an interrupted session: T-042 finished and committed)
+
+The prior session ended mid-stream right after T-011 landed (`add9be9`), with `tools/eval_metric/`
+already built on disk but untracked — never added to git, never given a ticket number, never written
+up here. Picked back up, verified it rather than trusting it as-is (re-ran `run_eval.py`: reproduces
+its own committed `report.md` table exactly, byte-for-byte, and a visual spot-check of
+`audit/letter_g.png` matches the reported 90.2/90.8/91.6% numbers), and closed the loop: opened
+**T-042** (new ticket, per this project's own convention for scope discovered mid-session rather than
+folding it into T-011) and committed the tool.
+
+**What T-042 adds over T-011's existing comparison set**: a standardized, reproducible ground-truth
+metric (IoU of a binarized shape mask, from an 8x-supersampled-then-box-downsampled render) instead
+of T-011's qualitative crop-comparison, covering shapes T-008's hand-drawn corpus and T-018's
+diagonal-only analytic ground truth don't — a curve and two real letterforms.
+
+**One real gap found while tying this up, not present in the code but in its own reporting**: the
+tool's `report.md` is script-generated (`run_eval.py`'s `write_report()`) and, as left by the
+interrupted session, presented only the raw score table with no interpretive read — exactly the kind
+of "table with no honest read" gap this project has caught itself in before (T-018's initial
+single-scale over-claim, before the full 2x-6x table showed the real 1-of-5 picture). Checked the
+actual numbers before writing anything: **argus-mobile-lite loses to Omniscale on IoU for 3 of the 4
+shapes (diagonal line, curve, letter A) and only wins on letter_g** — a more mixed picture than
+T-011's headline glyph-preservation win alone suggests. Added a "Reading the result honestly" section
+to `run_eval.py`'s generated report explaining the likely reason (Omniscale's smoothing costs it on
+T-011's filled-glyph test but gains a small, consistent IoU edge on thinner supersampled strokes/
+curves) and connecting it explicitly to T-018's own already-honest Omniscale non-win, rather than
+letting the two honest-non-win findings sit undiscovered in two different reports. Regenerated
+`report.md` after the edit and confirmed the score table itself is unchanged (only the new prose
+section was added).
+
+No other loose ends found from the interrupted session — `git status` showed only this one untracked
+directory, nothing half-edited elsewhere, and the branch (`phase1/t003-render-harness-t040-legacy-pack`,
+7 commits through `add9be9`) was already pushed to `origin` in the meantime (see this repo's memory
+for the SSH-key/`workflow`-scope auth story, not repeated here). This T-042 work is commit
+`<pending>` on the same branch; PR still not opened.
