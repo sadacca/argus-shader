@@ -9,7 +9,9 @@ targets named in docs/requirements.md's Backend portability NFR:
 
   - Vulkan   -> SPIR-V itself (spirv-val is the correctness check)
   - GL       -> GLSL 150 (desktop, matches "GL 3.2+ unified slang driver")
-  - GLES     -> ESSL 300 (mobile GL path, ties into T-005's GLES floor)
+  - GLES     -> ESSL 310 (mobile GL path, matches T-005's actual decided floor of
+                GLES 3.1+ core/gather-only — ESSL 300 lacks bitCount/textureGather,
+                both of which T-005's own rationale and later tickets need)
   - D3D11/12 -> HLSL shader model 5.0 (spirv-cross's hlsl backend targets
                 one HLSL dialect; D3D11 and D3D12 both consume it, so one
                 check stands in for both per the NFR's four-target list
@@ -96,7 +98,7 @@ def cross_compile(spv: Path, stage: str, backend_name: str, args: list):
 
 BACKENDS = [
     ("GL (desktop, GLSL 150)", ["--version", "150"]),
-    ("GLES (mobile, ESSL 300)", ["--version", "300", "--es"]),
+    ("GLES (mobile, ESSL 310)", ["--version", "310", "--es"]),
     ("D3D11/D3D12 (HLSL SM 5.0)", ["--hlsl", "--shader-model", "50"]),
     ("Metal (MSL)", ["--msl"]),
 ]

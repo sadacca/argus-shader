@@ -9,7 +9,14 @@ Tracks B and C share no code with A and should run in parallel.
 
 **Critical path:** T-001 → T-004 → T-016 → T-020 → T-023 → T-025 → T-033.
 Everything else can slip without stalling the shader core — except **T-010**, which gates T-017,
-and **T-005**, which gates T-020's fetch strategy.
+and **T-005**, which gates T-020's fetch strategy. **T-040** (legacy `.glslp`/`.glsl` pack, added
+2026-09-17) is a second output format tracking the same algorithm, not on the critical path itself,
+but it should not be left to accumulate against the whole finished slang pack — port each tier as it
+lands per T-040's acceptance criteria. **T-041** (class-(d) classifier separability, added
+2026-09-17) is likewise not on the critical path itself — T-020 can and should proceed once
+T-017/T-018/T-019 land, since T-017's report establishes that the current false-positive rate is a
+safe-but-suboptimal fallback rather than a correctness blocker — but it's real open work, not
+speculative, and shouldn't be left to silently rot once T-020 ships.
 
 **Highest-risk ticket: T-004.** If the two-level classifier decomposition can't separate dither from
 AA gradient, the architecture in §6a.3 changes and Phase 1 is re-scoped. Do it first.
@@ -37,14 +44,27 @@ commit. Portability is enforced continuously, not ported for in Phase 2 (NFR, P1
 
 ### T-003 — Headless golden-image regression harness
 **Track B · L · blocks T-022, T-032, T-036**
-**Status: blocked on a GPU/render backend — see `docs/backlog-status.md`.**
+**Status: built 2026-09-17 for the GLES backend — see `docs/backlog-status.md`. Backend coverage is
+partial; see the unchecked box below.**
 Deterministic offline frame-dump comparator emitting one PNG per (content, preset, tier, backend)
 tuple, diffed against committed goldens. This is the primary regression mechanism; perceptual review
-is a spot-check (§8, P2).
-- [ ] Byte-identical output across two consecutive runs on the same commit, same backend
-- [ ] Diff report identifies which tuples changed, with per-tuple pixel-delta metrics
-- [ ] Golden update is an explicit, reviewable commit — never automatic
-- [ ] Runs against all backends from T-002
+is a spot-check (§8, P2). Implementation: `tools/render_harness/` (`egl_context.py` for the headless
+EGL_EXT_platform_device context, `render_pass.py` renders one pass through the same glslang → SPIR-V
+→ spirv-cross GLES output T-002's compile gate validates, `compare_golden.py` + `run_harness.py` for
+the diff/update workflow). 55 goldens seeded under `tools/render_harness/goldens/` for the
+argus-mobile-lite preset against the full synthetic corpus.
+- [x] Byte-identical output across two consecutive runs on the same commit, same backend
+      (`render_pass.py --check-determinism`, hash-compared)
+- [x] Diff report identifies which tuples changed, with per-tuple pixel-delta metrics
+      (`compare_golden.py` reports mismatched-pixel count/percentage and max per-channel delta;
+      verified by deliberately corrupting a golden and confirming detection)
+- [x] Golden update is an explicit, reviewable commit — never automatic (`run_harness.py
+      --update-goldens`; default mode only ever reads goldens, never writes them)
+- [ ] Runs against all backends from T-002 — **only GLES is actually executed.** GL-desktop is
+      reachable via the same EGL device with a different API binding (not yet wired); Vulkan/SPIR-V
+      is validated (spirv-val) but not rendered (no headless Vulkan render path built yet — distinct
+      boilerplate from EGL/GLES); D3D11/12 and Metal have no runtime on this platform and can only
+      ever be compile/cross-compile-checked (already covered by T-002), not rendered.
 
 ### T-004 — Spike: two-level classifier feasibility ⚠️ highest risk
 **Track A · M · blocks T-015, T-016**
@@ -116,12 +136,80 @@ rewards over-triggering — the heuristic would appear to succeed by misclassify
 
 ### T-011 — Catalog existing-shader failure cases
 **Track C · M · depends on T-007, T-008, T-012**
-**Status: blocked on a render backend (and T-007's real-game corpus) — see `docs/backlog-status.md`.**
-Run xBRZ, ScaleFX, SABR, Omniscale, and nearest-neighbour across the corpus; document where each
-fails. Establishes the specific gaps this project claims to close (§1, §4).
-- [ ] Every corpus item rendered through all five baselines at matched output resolution
-- [ ] Failure modes catalogued per shader with example crops
-- [ ] Nearest-neighbour included as the honest control (P6)
+**Status: 4 of 5 baselines executable as of 2026-09-19** — `tools/comparison/`
+(`generate_baselines.py`, `report.md`) renders the full synthetic corpus through argus-mobile-lite
+(T-020), Omniscale, and nearest-neighbour at matched scale. **Update 2026-09-19**: built
+`tools/render_harness/render_multipass.py` (a real multi-pass filter-chain sequencer, previously
+missing infra) and unblocked SABR (GPLv2+) and ScaleFX (MIT, vendored since 2026-09-17 but
+unexecutable until now); xBRZ (GPLv3, embedded) also now runs. Source for SABR/xBRZ is fetched to a
+scratch location outside this repo for comparison purposes, not vendored into git history — only
+rendered output is committed, matching how `tools/comparison/renders/` is already `.gitignore`d as
+regeneratable. HQx remains blocked, now on a real unresolved bug (renders without error but produces
+a visibly wrong result) rather than licensing — deprioritized given it's also the most legally
+marginal of the three per `docs/licensing.md`. See `docs/backlog-status.md`'s 2026-09-19 update for
+the full bug list found while building the sequencer (vendoring path bugs, missing `#pragma parameter`
+defaults, inconsistent push-constant instance naming across real third-party shaders) and for a
+correction: an earlier update here mischaracterized the SABR/xBRZ/HQx pause as "asked the user
+directly" — that was this project's own conservative choice, not an actual pending user decision; the
+user corrected this directly and gave the go-ahead. T-007's real-game corpus is still needed for full
+coverage. See `docs/backlog-status.md`.
+
+**Update 2026-09-19 (continued): a real orientation bug, then a numeric comparison with an honest
+result.** The user caught ScaleFX rendering upside down in the first published comparison — a real
+bug in `render_multipass.py` (every pass used a vertex quad assuming a top-down input texture, true
+only for the first pass; each subsequent pass's FBO-sourced input is bottom-up, so a chain's final
+orientation depended on whether its pass count was even or odd — ScaleFX's 6 passes came out flipped,
+xBRZ's 3 happened to be correct by accident). Fixed and re-verified visually. Then built
+`tools/eval_metric/rpg_text_eval.py` (T-042's own supersample-then-downsample ground-truth method,
+applied to RPG content): **xBRZ scores highest on both tested scenes, SABR and ScaleFX both beat
+argus-mobile-lite, and argus-mobile-lite is within noise of plain nearest-neighbour** (82.0% vs 82.0%
+on the dialogue box; 89.0% vs 88.3% on the letters). This does not contradict T-011's original
+`glyph_sheet` finding (argus pixel-identical to nearest-neighbour where Omniscale rounds corners) —
+both are true, but the crispness argus-mobile-lite's text protection preserves does not translate into
+a ground-truth-overlap win on this metric. Republished the comparison with the fix and this table:
+https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU. Also added `docs/retroarch-testing.md` — the
+shader pack itself needs no further work to load in a real RetroArch install; this documents how, and
+states the numeric result up front.
+- [ ] Every corpus item rendered through all five baselines at matched output resolution — 4 of 5
+      baselines now executable (nearest-neighbour, Omniscale, SABR, ScaleFX, xBRZ), but only run
+      against this session's new RPG-style content so far, not yet the full existing synthetic
+      corpus — extending `generate_baselines.py` to cover all four there is tracked follow-up, not
+      done yet. HQx blocked on an unresolved rendering bug.
+- [x] Failure modes catalogued per shader with example crops — see `tools/comparison/report.md`'s
+      glyph-preservation finding (Omniscale visibly rounds/smooths protected glyph corners that
+      argus-mobile-lite leaves pixel-identical to nearest-neighbour), plus the 2026-09-19 RPG
+      dialogue-box/letters comparison (published: https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU)
+      showing the same pattern against SABR/ScaleFX/xBRZ at native RPG text scale
+- [x] Nearest-neighbour included as the honest control (P6)
+
+### T-042 — Standardized ground-truth overlap eval (added 2026-09-17)
+**Track B/C · S · depends on T-011, T-020 · new scope**
+Built the same session as T-011's baseline comparison set: `tools/eval_metric/`
+(`generate_shapes.py`, `run_eval.py`, `report.md`) scores every executable baseline
+(nearest-neighbour, Omniscale, argus-mobile-lite) against a standardized, reproducible ground truth —
+shapes drawn at 8x supersampled resolution and box-downsampled to native, rather than T-008's
+hand-drawn native-res patterns or T-018's single analytic diagonal-sweep formula — using IoU of the
+binarized foreground shape mask as the primary metric (plain pixel accuracy as a secondary, more
+intuitive number). Labeled audit contact sheets (ground truth + every baseline scored) are under
+`tools/eval_metric/audit/`.
+- [x] Reproducible, single-number metric defined and implemented — same fixed luma threshold
+      (derived from the shapes' own known BG/FG colors) applied identically to ground truth and every
+      candidate, not tuned per image; re-running `run_eval.py` reproduces `report.md`'s table exactly
+- [x] Covers more than straight lines — a curve and two real letterforms (DejaVu Sans Bold `A`/`g`),
+      generalizing past T-018's diagonal-only analytic ground truth
+- [ ] Only as broad as the three baselines `tools/comparison/` can actually execute — ScaleFX
+      (multi-pass infra gap) and xBRZ/SABR/HQx (licensing-scope call) are excluded, same as T-011
+- [x] Visually auditable, not just a table — labeled contact sheets under `audit/` let a human
+      confirm the score against what was actually rendered
+
+**Result reported honestly, not cherry-picked**: argus-mobile-lite loses to Omniscale on IoU for 3 of
+the 4 shapes (`diagonal_line_30deg`, `curve_arc`, `letter_A`) and only wins on `letter_g` — see
+`report.md`'s "Reading the result honestly" section for why (Omniscale's smoothing costs it on
+T-011's glyph-fill test but gains it a small, consistent IoU edge on thin strokes/curves). This is a
+different, standardized metric corroborating T-018's own already-honest Omniscale non-win (wins 1 of
+5 tested scales), not a new regression. Feeds T-022's "beats nearest-neighbour and SABR on the
+perceptual set" exit criterion, though it doesn't itself score SABR (excluded same as T-011/T-018) —
+T-022 will still need either a licensing call on SABR or a documented decision to gate exit without it.
 
 ### T-012 — Perceptual A/B comparison harness
 **Track B · S**
@@ -138,9 +226,89 @@ Side-by-side comparison tooling (imgsli or custom) for spot-checks and the commu
 **Track A · S · depends on T-002**
 Root preset plus `#pragma parameter` declarations for edge threshold, dither-preservation strength,
 sharpen amount, temporal blend weight (FR5).
-- [ ] All FR5 parameters declared with sane defaults and documented ranges
-- [ ] Parameters surface and adjust live in RetroArch's shader menu
-- [ ] Compiles clean on all backends via T-002
+**Skeleton built 2026-09-17** (`shaders/shaders_slang/argus/`): passthrough pass with all four FR5
+parameters declared, passing both T-002's compile gate and a T-003 render/golden check.
+- [x] All FR5 parameters declared with sane defaults and documented ranges
+- [ ] Parameters surface and adjust live in RetroArch's shader menu — needs an actual RetroArch
+      install to verify; not checkable from this environment
+- [x] Compiles clean on all backends via T-002
+
+### T-040 — Legacy `.glslp`/`.glsl` preset pack (added 2026-09-17)
+**Status: version-negotiation foundation fixed 2026-09-19, math port still open — see T-045.** Before
+porting T-020's real logic in, verified against RetroArch's actual driver source how this file's
+compiled GLSL version gets negotiated — found and fixed two real bugs in the existing skeleton (no
+`#version` line at all; the compile gate's own version-testing methodology didn't match real driver
+behavior). The skeleton itself is still a passthrough; T-020's math is not yet ported.
+**Track A · L · depends on T-013 (skeleton), tracks T-017/T-018/T-019/T-020 as each lands · new scope**
+Ship a second, independently-formatted preset pack for RetroArch's older GLSL shader driver
+(`.glslp` preset + single-file `.glsl` using `#if defined(VERTEX)`/`#elif defined(FRAGMENT)`
+conditional compilation, `COMPAT_*` portability macros, implicit non-Vulkan-semantics uniform
+bindings) alongside the primary `.slangp`/`.slang` pack, for RetroArch installs and non-RetroArch
+frontends that predate or don't support the slang pipeline. This is **not** a byproduct of T-002's
+SPIR-V/spirv-cross cross-compile — that pipeline's GL/GLES output targets the format the slang driver
+consumes, which is structurally different from the legacy driver's expected file layout and uniform
+conventions, even though the underlying per-pixel math can be shared conceptually between the two.
+Confirmed against real examples in `libretro/glsl-shaders` (`stock.glsl`, `crt-pi.glsl`): the legacy
+format's `#pragma parameter` syntax is identical to slang's, so FR5 parameter declarations translate
+directly; only the file structure, stage-selection mechanism, and uniform/varying naming differ.
+- [x] Root `.glslp` skeleton + `#pragma parameter` declarations mirroring T-013, using the legacy
+      single-file `#if defined(VERTEX)`/`#elif defined(FRAGMENT)` structure and `COMPAT_*` macros
+      (`shaders/shaders_glsl/argus/`, built 2026-09-17)
+- [x] Compile gate extended to validate the legacy format (`tools/compile_gate/compile_check_legacy.py`,
+      2026-09-17) — checks GLES 300, desktop GLSL 150/120, and (structurally, via the file's own
+      `#if __VERSION__ >= 130` COMPAT_* branch) GLES 100, for both stages. **Caught a real bug** while
+      building this: the shared `TEX0` varying was declared before any GLSL ES float precision default
+      existed, which glslangValidator rejects outright in the fragment stage — fixed by moving the
+      `precision mediump float` default before the shared declaration instead of leaving it fragment-
+      branch-local (see the file's header comment for detail).
+- [ ] Each tier's algorithm ported to legacy syntax as its slang counterpart lands (T-020 mobile-lite
+      first), not written from scratch after the slang pack is finished
+- [ ] Golden-image parity confirmed between the slang and legacy outputs within tolerance (T-003)
+- [ ] Documented: which frontends/RetroArch versions require the legacy pack vs. the slang pack,
+      and any feature the legacy driver cannot express (e.g., `OriginalHistory#` semantics for FR4 —
+      confirm the legacy driver's history/feedback support before T-025 lands, since the two drivers'
+      history models may not be equivalent)
+
+### T-045 — Legacy driver version negotiation was wrong; fixed before any real logic landed (added 2026-09-19)
+**Track A · S · depends on T-040 · new scope**
+Investigated before starting T-040's actual math port (porting mobile-lite.slang's fused logic to
+`mobile-lite.glsl` needs `texelFetch`/`bitCount`, so getting the compiled GLSL version right is a
+prerequisite, not a detail). Read RetroArch's real legacy driver source directly
+(`gfx/drivers_shader/shader_glsl.c`, `gl_glsl_compile_shader()`, github.com/libretro/RetroArch@master,
+fetched 2026-09-19) rather than assume the skeleton's existing structure was already correct.
+**Found two real, structural problems, both now fixed:**
+1. **The skeleton had no `#version` line at all.** RetroArch's driver only computes a substitute
+   version when the file declares its own (`existing_version` in the real source); with none present,
+   *no* version gets injected and the file compiles under the implicit GLSL ES 1.00 default —
+   incompatible with `texelFetch`/`in`/`out`/`bitCount` outright, not merely a lesser version of them.
+2. **Even a declared version wouldn't have been enough at just any number.** The real driver remaps a
+   declared version on GLES3-capable targets: `[130, 330)` → `"300 es"`, exactly `330` → `"310 es"`,
+   `>330` → `"320 es"`. This project's own T-005 floor (`docs/gles-floor.md`) needs ES 3.10 specifically
+   for `bitCount()` — so the file must declare **exactly** `#version 330`, not the `130` its own
+   COMPAT_* macros merely check for (`#if __VERSION__ >= 130`), or real mobile hardware would silently
+   get capped at "300 es" and fail to compile the ported logic.
+- [x] `shaders/shaders_glsl/argus/shaders/mobile-lite.glsl` now declares `#version 330` as its literal
+      first line, with the full remap table and citation in a header comment
+- [x] `tools/compile_gate/compile_check_legacy.py` rewritten to simulate the real remap (previously it
+      externally forced a version line in front of the file's own text — which both didn't reflect real
+      driver behavior *and* stopped being syntactically possible the moment the file declares its own
+      `#version`, GLSL forbidding two). Now tests the three real outcomes: desktop (declared version
+      verbatim), GLES3.1+ (the real T-005 target, remapped from the declared version), and GLES-2-only
+      (forced to "100" regardless, non-gating — outside T-005's device matrix, kept only so this file's
+      real behavior there stays on record)
+- [x] Verified: the corrected gate passes clean on both gating targets for the still-passthrough
+      skeleton (`python3 tools/compile_gate/compile_check_legacy.py`)
+- [ ] Not yet done, left for the next pass at T-040 itself: the actual math port (T-020's fused
+      classifier + reconstruction rules into this now-correctly-versioned file) and a legacy-pipeline
+      render harness to verify golden parity against the slang pass — this ticket only fixes the
+      foundation those need, deliberately stopping short of the port itself rather than build it on a
+      newly-verified-correct-but-still-untested-in-practice foundation without room to verify it as
+      carefully as T-015-T-020 each were
+
+This is exactly the class of environment-assumption bug this project's docs already flag watching for
+(GLES-300-vs-310, the CI globstar gap, T-018's Mesa dynamically-indexed-texelFetch miscompilation) —
+a fourth instance, this time caught *before* shipping the affected logic rather than after, because it
+was checked against the real driver source before porting anything into the file it would have broken.
 
 ### T-014 — Generate and bake the 3×3 topology LUT
 **Track A · M · depends on T-001, T-004**
@@ -154,52 +322,184 @@ Build the 256-entry LUT mapping 3×3 binary edge topology to edge geometry (§6a
 **Track A · M · depends on T-004**
 Implement local variance, checkerboard autocorrelation, stroke-width estimate, and unique-color
 count over the 5×5 kernel in ALU — no table, no branching (§6a.3).
-- [ ] Each statistic matches the T-004 offline reference within tolerance
-- [ ] ALU op count per pixel measured and recorded
-- [ ] mediump-safe: no precision-induced misclassification versus highp reference
+**Built 2026-09-17**: `tools/classifier_gpu/classify_debug.slang` (+ `reference.py`,
+`verify_gpu.py`, `report.md`). Found and fixed two real numerical bugs along the way that T-004's
+CPU-only spike couldn't have surfaced: the checkerboard-autocorrelation ratio is a 0/0-like
+indeterminate form on flat windows that CPU float arithmetic happens to cancel exactly but a
+GPU's different summation order doesn't (was producing false dither-positive noise on 77% of
+pixels in one test image before a branchless signal-floor guard fixed it), and the unique-color
+proxy needed 32 luma bins, not the 8 first tried, to resolve this corpus's own near-black
+glyph-outline/background pair. See `report.md`'s six findings for the full detail.
+- [x] Each statistic matches the T-004 offline reference within tolerance — variance/checkerboard/
+      popcount verified to match; stroke-width's raw value is checked informationally rather than
+      gated, because it diverges near flat/background windows (a `>=` tie) without ever changing
+      the final classification — see `report.md` Finding 5.
+- [x] ALU op count per pixel measured and recorded — `report.md`'s cost table, ~500 ops/pixel
+      (estimated from source, not hardware-profiled — no profiler available in this environment)
+- [ ] mediump-safe: no precision-induced misclassification versus highp reference — **partially
+      closed.** The variance accumulator can overflow real fp16 mediump (sums up to ~1.6M vs.
+      fp16's ~65504 max) and was declared `highp` rather than ship that unverified; the other three
+      statistics are small enough in magnitude to be mediump-safe by construction but weren't
+      empirically re-tested at mediump, since this software rasterizer likely executes mediump as
+      fp32 internally and so can't actually exercise the failure mode either way. Needs real mobile
+      hardware or a precision-accurate mediump emulator to close fully.
 
 ### T-016 — FR2 four-class region classifier
 **Track A · L · depends on T-014, T-015 · critical path**
 Combine LUT topology and scalar statistics into per-region classification: hard-edge/flat, dither,
 AA'd gradient, thin monochrome stroke (FR2).
-- [ ] Classifies all four classes at the T-004 accuracy threshold
-- [ ] Operates per-region within one shader — no genre-selected shader variants (FR2)
-- [ ] Mixed-content frames (art + text overlay simultaneously) classify correctly
-- [ ] No divergent branching in the hot path
+**Built 2026-09-17** alongside T-015, same files — `classify_debug.slang`'s DEBUG_MODE=1 output.
+This is the classification decision logic (thresholds on T-015's four statistics) verified
+end-to-end through the actual GLES render path against the T-004 corpus; it does **not** yet
+consume T-014's baked LUT topology (that fusion, and folding this out of its current
+debug-output-mode shader into a shipped pass, is T-020's job, combined with T-017/T-018/T-019's
+reconstruction logic) — see `report.md`'s "What's still open" for the exact scope boundary.
+- [x] Classifies all four classes at the T-004 accuracy threshold — dither-vs-gradient separation
+      0.906, identical to T-004's own result; final-label agreement against the CPU reference
+      checked directly (not just the separation score) at <1.3% mismatch across the corpus, with
+      one documented, understood exception (see below)
+- [x] Operates per-region within one shader — no genre-selected shader variants (FR2) — single
+      shader, all four classes computed unconditionally per pixel
+- [x] Mixed-content frames (art + text overlay simultaneously) classify correctly — verified
+      against the corpus's checkerboard/dither/text categories together, not just isolated per-class
+      test images
+- [x] No divergent branching in the hot path — the classification logic itself uses only
+      arithmetic selects (`?:` on scalars, no early-exit or texture-dependent branches); DEBUG_MODE's
+      own branch is a uniform (not per-pixel data-dependent) selector between two debug output
+      encodings and won't exist in the fused shipped pass this promotes into
+
+One corpus category (`text_negative/architecture_*.png`) sits close enough to the
+`CHECKERBOARD_HI` threshold that independent floating-point implementations can legitimately land
+on either side of it — not a bug, documented in `report.md`'s Finding 6, and excluded from the
+general tolerance check specifically so it can't mask a real regression by loosening a shared bar.
 
 ### T-017 — Text/glyph protection path (class d)
 **Track A · M · depends on T-016, T-009, T-010**
 Route class (d) to minimal-interpolation/nearest-preserving reconstruction rather than diagonal
 reconstruction (FR2).
-- [ ] Legibility on T-009 scores at or above nearest-neighbour on the rubric
-- [ ] False-positive rate on T-010 within the threshold agreed in T-010
-- [ ] Both sets gate this ticket together — positive-only is not sufficient to close
+**Built 2026-09-17**: `tools/text_protect/` (`text_debug.slang`, `text_reference.py`, `verify_gpu.py`,
+`report.md`). Same debug-shader-verified-against-CPU-reference pattern as T-015/T-016/T-019. The
+reconstruction rule itself is verified and demonstrably beneficial (see first box); the
+false-positive box surfaced a real, pre-existing classifier-separability limit that this ticket's
+reconstruction rule cannot itself close — tracked as new scope in **T-041** rather than asserted as
+passing. See `report.md` for the full evidence (a real per-statistic separability check across
+`text_positive`/`text_negative`, not a guess).
+- [x] Legibility on T-009 scores at or above nearest-neighbour on the rubric — measured 0.651 mean
+      (nearest-neighbour baseline = 1.000 by definition); checked against a real comparison baseline
+      (no class-d special case at all: 0.002 mean) to make this a substantive claim, not a tautology
+      — see `report.md`
+- [ ] False-positive rate on T-010 within the threshold agreed in T-010 — **no threshold can honestly
+      be agreed against the current statistic set.** Measured 80.8% (unchanged from T-004/T-010's own
+      baseline), and `report.md` shows directly that none of T-015's four wide-kernel statistics
+      separate `text_negative` from `text_positive` on this corpus — they were deliberately built to
+      share the same signature. This is a real, evidenced limitation of the classifier this ticket
+      depends on (T-016), not a gap in this ticket's own reconstruction rule; see T-041 (new ticket,
+      below) for where the actual fix belongs.
+- [ ] Both sets gate this ticket together — positive-only is not sufficient to close; per the above,
+      this box stays open pending T-041
+
+### T-041 — Class (d) separability beyond the 5x5 wide-kernel statistic set (added 2026-09-17)
+**Track A · M · depends on T-016, T-017 · new scope**
+T-017's report (`tools/text_protect/report.md`, Finding 1) measured, directly and per-statistic, that
+none of T-015's four wide-kernel statistics (variance, checkerboard-autocorrelation, luma-bin
+popcount, stroke-width) can separate real glyph strokes from T-010's fur/hair, architectural-grid,
+and weapon-outline content — they were deliberately built to share the same thin-high-contrast-stroke
+signature, and a measured 80.8% false-positive rate confirms the statistics genuinely can't tell them
+apart, not that thresholds are merely mistuned. This is the risk T-004's spike report and T-010 both
+flagged in advance and deferred to this point; T-017 is where it stopped being deferrable.
+- [ ] Candidate approach evaluated and a decision recorded: a wider secondary kernel for
+      density/periodicity (architecture's grid spacing, fur's local stroke density) — noting the
+      tension with §6a.3's ALU-budget-driven small-kernel decision — vs. fusing T-014's LUT topology
+      (built, not yet consumed by T-016) for connectivity/grid-alignment cues, vs. formally accepting
+      the current false-positive rate as a permanent tradeoff (T-017's report already establishes that
+      misrouting to nearest-preserving reconstruction is a safe, if suboptimal, fallback — not a
+      correctness bug)
+- [ ] Whichever approach is chosen, re-measured against the same `text_positive`/`text_negative`
+      per-category table `tools/text_protect/report.md` already established, so the before/after is
+      directly comparable
+- [ ] T-017's backlog entry updated to reflect the resolution (checked or explicitly accepted-as-is)
 
 ### T-018 — Edge reconstruction from LUT topology
 **Track A · L · depends on T-014, T-016, T-001**
 Reconstruct edges/curves for classes (a) and (c) using LUT-supplied geometry.
-- [ ] Beats SABR and Omniscale on the diagonal sweep (T-008) at matched output resolution
-- [ ] No regression versus nearest-neighbour on flat-color sprite art
-- [ ] Sub-pixel edge placement preserved — verified against integer-scale reference
+**Built 2026-09-17**: `tools/edge_reconstruct/` (`edge_debug.slang`, `edge_reference.py`,
+`regenerate_lut_glsl.py`, `verify_gpu.py`, `report.md`). Same debug-shader-verified-through-the-
+real-render-harness pattern as T-015/T-016/T-019/T-017. Building this surfaced a real, reproducible
+Mesa/llvmpipe compiler bug (dynamically-indexed `texelFetch` on a second sampler corrupts unrelated
+shader state) — worked around for this pre-fusion debug shader by embedding T-014's LUT as a
+generated GLSL constant array instead of sampling its texture; see `report.md` Finding 1 for the full
+isolation and why T-020's real shipped pass should still use T-014's texture as designed, re-verified
+against a real GPU driver. Also found that scaling the reconstruction blend by LUT confidence
+(plausible-sounding, tried first) measurably *hurt* sub-pixel accuracy — removed, see Finding 2.
+- [x] No regression versus nearest-neighbour on flat-color sprite art — measured 0px difference on
+      `checkerboard_transparency`'s flat background region at 3x scale (`report.md`)
+- [x] Sub-pixel edge placement preserved — verified against integer-scale reference — mean sub-pixel
+      edge-position error against the diagonal sweep's own analytic ground truth: 1.051px vs.
+      nearest-neighbour's 1.537px (lower is better) at 4x scale (`report.md`)
+- [ ] Beats SABR and Omniscale on the diagonal sweep (T-008) at matched output resolution —
+      **Omniscale: measured honestly across every scale RetroArch would realistically run this tier at
+      (2x-6x), not just one — wins 1 of 5 tested scales, loses by a similar margin at the other four
+      (`report.md` Finding 2's full table). Not a threshold this ticket can claim passing.** SABR: not
+      run at all — this project's own T-011 backlog entry already treats even *running* SABR's
+      unmodified code for comparison as gated on a human licensing-scope decision, not a new call this
+      ticket makes unilaterally (see `reference_shaders/NOTICE.md`).
 
 ### T-019 — Dither preservation rule
 **Track A · M · depends on T-016**
 Reconstruction rule for class (b) that preserves intentional dithering rather than smoothing it away
 (Goal 2, FR9 system axis).
-- [ ] Checkerboard-transparency block (T-008) survives without being blurred to flat color
-- [ ] Genesis-style manual dithering visibly preserved — the case §5 FR9 flags as most at risk
-- [ ] Behavior differs measurably between NES-style hard dither and SNES-style blending
+**Built 2026-09-17**: `tools/dither_reconstruct/` (`dither_debug.slang`, `dither_reference.py`,
+`generate_soft_dither.py`, `verify_gpu.py`, `report.md`). Debug/test shader verified against a CPU
+reference through T-003's render harness, same pattern as T-015/T-016 — not yet fused into the
+shipped mobile-lite pass (T-020's job) and only defines class (b)'s own rule; non-dither pixels
+are an unfiltered placeholder here, not classes (a)/(c)/(d)'s real reconstruction.
+- [x] Checkerboard-transparency block (T-008) survives without being blurred to flat color —
+      mean |rendered-source| over the dither region = 0.000 at default strength (`report.md`)
+- [x] Genesis-style manual dithering visibly preserved — the case §5 FR9 flags as most at risk —
+      same 0.000 deviation result on `dither_ramp`'s top half
+- [x] Behavior differs measurably between NES-style hard dither and SNES-style blending — required
+      generating new test content (`corpus/synthetic/dither_soft/`, see `report.md` Finding 1); no
+      existing corpus sample isolated close-color ("soft") ordered dithering. Measured 2.04x more
+      blending on the soft case than the hard case at a shared partial strength setting.
 
 ### T-020 — Fuse into single-pass mobile-lite shader
 **Track A · L · depends on T-017, T-018, T-019, T-005 · critical path**
 Fuse classification and reconstruction into one fragment shader: fixed unrolled neighborhood, no
 intermediate render targets, mediump, `textureGather` where available (FR3, §6a).
-- [ ] Exactly 1 pass, 1 output-resolution pass, zero intermediate RTs
-- [ ] Base coord + texel size as varyings only (≤2 vec4) — offsets computed in FS (§6a.6, B3)
-- [ ] Varying count verified ≤16 vec4 on Adreno 6xx
-- [ ] `textureGather` used where available, with the T-005 fallback path if required
+**Built 2026-09-17** (`shaders/shaders_slang/argus/shaders/mobile-lite.slang`, driven by
+`argus-mobile-lite.slangp`) — see `tools/fusion/report.md` for the full write-up, including a real
+gap this ticket found and fixed in the render harness's own regression goldens (Finding 1: `scale0 =
+1.0`, inherited from T-013's passthrough skeleton, made T-018's edge reconstruction a mathematical
+no-op, so the previously-committed goldens were silently testing nothing of this ticket's logic —
+fixed to `scale0 = 4.0`, all 60 goldens regenerated and visually spot-checked before committing).
+- [x] Exactly 1 pass, 1 output-resolution pass, zero intermediate RTs — verified directly from
+      `argus-mobile-lite.slangp` (`shaders = 1`, `scale_type0 = viewport`)
+- [x] Base coord + texel size as varyings only (≤2 vec4) — offsets computed in FS (§6a.6, B3) —
+      verified via compiled GLES reflection: exactly one `vec2` varying (`vTexCoord`) crosses the
+      vertex/fragment boundary; no texel-size varying at all (texel size read from the `SourceSize`
+      uniform instead); every neighbor tap is `texelFetch(base + offset)` computed in the fragment
+      shader
+- [ ] Varying count verified ≤16 vec4 on Adreno 6xx — no physical device available in this
+      environment (same limitation as T-006/T-021/T-018); the compiled reflection shows 1 varying,
+      trivially within any GLES 3.1 floor, but that's not the same as a device-verified claim
+- [ ] `textureGather` used where available, with the T-005 fallback path if required — not attempted;
+      every tap is an individual `texelFetch`, matching what each contributing debug shader already
+      verified. Real, tracked perf optimization (`tools/fusion/report.md`), deliberately out of this
+      ticket's scope to avoid re-verifying the fetch pattern from scratch without a bandwidth/frame-
+      time measurement (T-021/T-022) to check it against
+- [ ] `mediump` precision (per this ticket's own prose and FR8/§5) — kept `highp` throughout, same as
+      every contributing debug shader. This was flagged as this ticket's job by T-015's own report
+      (`tools/classifier_gpu/report.md` Finding 3: the variance accumulator can overflow real `fp16`
+      `mediump` on hardware this environment's `mediump`-as-`fp32` software path can't reproduce) —
+      not attempted here; downgrading precision without a real device to catch an overflow regression
+      would be an unverified change, which this project's discipline doesn't ship
 
 ### T-021 — Bandwidth (B/px) instrumentation
+**Status: blocked on T-006's physical device, same as T-006 itself.** An analytical lower bound
+(no hardware needed) is built as **T-043** — see its entry for a real, concerning finding: even
+under an idealized best-case cache assumption, mobile-lite's bandwidth already exceeds §6's ceiling
+at every realistic scale. Worth reading before assuming this ticket will simply confirm a pass once
+hardware is available.
 **Track B · M · depends on T-006**
 Wire the T-006 methodology into a repeatable measurement reported per tier alongside frame time
 (§6, O2).
@@ -207,13 +507,76 @@ Wire the T-006 methodology into a repeatable measurement reported per tier along
 - [ ] Runs on both reference handheld and desktop
 - [ ] Output is machine-readable so CI can assert against tier ceilings
 
+### T-043 — Analytical (no-hardware) B/px lower bound for mobile-lite (added 2026-09-19)
+**Track B · S · depends on T-020 · new scope**
+T-021/T-006 (real measured B/px) remain blocked on physical handheld hardware this environment
+doesn't have — but T-006's own acceptance criteria already need a *calculated* B/px to validate a
+future real measurement against (within ±15%), and that number didn't exist anywhere yet. Built it:
+`tools/bandwidth_estimate/calculate_bpx.py` hand-accounts mobile-lite.slang's actual texture-read
+pattern (a single RGBA8 `Source` texture, an unconditional 5×5 classification kernel, up to 9 more
+taps in the edge-reconstruction branch — all cited by line number in the script) and computes an
+ideal-cache (compulsory-misses-only) amortized-bandwidth lower bound across T-018's already-
+established 2x-6x realistic scale range.
+- [x] Fetch-instruction count per output pixel derived from source: 25 (flat/dither/stroke branches)
+      to 34 (edge-reconstruction branch)
+- [x] Amortized ideal-cache B/px lower bound computed at every scale in the 2x-6x range
+- [ ] Validated against a real measurement (T-006's own stated validation step — blocked on hardware,
+      same as T-006/T-021 themselves)
+
+**Real finding, reported plainly rather than filed away**: at every scale in the 2x-6x range, this
+lower bound already exceeds §6's 8 B/px mobile-lite ceiling — by 15.1 B/px at best (6x) up to 40 B/px
+(2x) — even under the most generous plausible caching assumption. This isn't a shader bug; it's the
+structural consequence of FR3's "1 output-resolution pass" definition, which necessarily re-runs the
+full 5×5 classification kernel once per *output* pixel rather than once per *native* pixel (the thing
+Phase 2's T-023 native-res classification pass exists specifically to fix, at the cost of a second
+pass). See `tools/bandwidth_estimate/report.md`'s "Reading this honestly" section for the full
+caveat: this is a lower bound, not a prediction — real hardware could do better than the idealized
+model assumes (mobile texture caches and tile-based rendering are often good at exactly this kind of
+local-stencil reuse) but cannot do worse. **T-022's "≤ 8 B/px measured" exit criterion should not be
+assumed achievable as mobile-lite currently stands** without either real hardware evidence to the
+contrary or a design change — flagged here as new scope for whoever picks up T-006/T-021/T-022 next,
+not asserted as a T-022 failure this ticket isn't positioned to call.
+
+### T-044 — Sub-pixel corner/curve regression vs. nearest-neighbour on text (added 2026-09-19)
+**Track A · S · depends on T-018, T-042 · new scope**
+T-042's headline table shows argus-mobile-lite scoring *below* nearest-neighbour on IoU for
+`letter_A` (94.0% vs 94.2%) — surprising given T-017/T-020's established pixel-identical output on
+T-010's own crisp text corpus. Investigated rather than left as an unremarked number:
+`tools/eval_metric/text_legibility_diff.py` splits argus/NN pixel disagreements into "boundary"
+(nearest-neighbour's own blocky upscale already disagrees with ground truth there — not a regression)
+and "interior" (NN matches ground truth, argus doesn't — the bucket that would actually mean a
+legibility regression).
+- [x] Quantified: 174/147456 px (`letter_A`), 215/147456 px (`letter_g`) — both ~0.1-0.6% of the
+      image — are pixel-wrong-vs-ground-truth where nearest-neighbour is pixel-right
+- [x] Visually audited (`tools/eval_metric/audit/letter_*_legibility_regression.png`, wrong pixels
+      painted red on ground truth): every one sits exactly on curved strokes or sharp corners
+      (the A's apex and inner-triangle corners; the g's bowl curve and terminal) — never in flat
+      interior regions away from any stroke
+- [x] Root cause identified, not just measured: this is the same **compass-snapping limitation
+      T-018's own report.md already documents** (the topology LUT's 8 discrete directions
+      approximate a continuous curve or off-compass corner angle imperfectly) manifesting on a
+      different, anti-aliased-letterform corpus (T-042) rather than T-010's crisp hand-drawn one —
+      not a new, unrelated bug
+- [ ] Legibility judgment call not made here and left open: whether sub-pixel corner rounding on a
+      large supersampled test glyph constitutes a real readability problem for actual small pixel-art
+      text (T-017/FR2's real target) is a different question this metric can't answer on its own
+
+Read plainly against T-022's exact wording ("text legibility no worse than nearest-neighbour"): this
+is not literally true at the pixel level on T-042's corpus. **T-022's text-legibility exit criterion
+should be checked against this finding, not assumed to pass by citing T-011's pixel-identical result
+alone** — that result and this one are both real, from different corpora, and both need to be read
+together. See `tools/eval_metric/text_legibility_report.md`.
+
 ### T-022 — Phase 1 exit validation
 **Track A/B/C · M · depends on T-020, T-021, T-003, T-011**
 Gate Phase 1 against §10 exit criteria.
-- [ ] ≤ 8 B/px measured on reference handheld
+- [ ] ≤ 8 B/px measured on reference handheld — see **T-043**: an analytical lower bound already
+      exceeds this ceiling at every realistic scale; do not assume this box is a formality
 - [ ] 60fps at 1080p on reference handheld
 - [ ] Beats nearest-neighbour and SABR on the perceptual set
-- [ ] Text legibility no worse than nearest-neighbour
+- [ ] Text legibility no worse than nearest-neighbour — see **T-044**: literally true at the pixel
+      level, not quite; a small, well-understood, corner/curve-only regression exists on T-042's
+      corpus. Needs a legibility judgment call, not an automatic pass
 - [ ] False-positive rate on T-010 within threshold
 - [ ] Goldens committed for all tiers/backends
 
