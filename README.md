@@ -239,6 +239,23 @@ the RPG-content proxy just wasn't representative enough to tune against. No ship
 round — reported honestly as a null result, with a concrete, well-evidenced recommendation for the
 real next step (improve T-018's algorithm itself, or pursue T-023's native-res classification pass).
 
+**Update, 2026-09-19 (continued): T-047 — real RetroArch testing forces a rethink.** The user ran
+argus-mobile-lite and xBRZ side-by-side on real hardware: "argus is slow and nearly unplayable...
+argus has no benefit whatsoever to smoothing... xbrz looks great." Both findings hold up under
+investigation. **Performance**: inspecting the actual compiled GLES output found a real anti-pattern —
+the classification kernel stores 25 taps into local arrays, then reads them back across five separate
+loops, a well-known GPU register-spilling hazard invisible to this project's software-rasterizer-only
+testing. **Quality**: built the gold-standard eval the user specified — a sharp V corner and a curved
+O ring, each scored against both a true smooth source ("vector" regime) and genuinely blocky pixel art
+("8bit" regime), rather than one blended metric. **argus-mobile-lite is worst-of-field on the vector
+regime (ties/loses to nearest-neighbour, plus a newly-found artifact at the sharp vertex) and
+best-of-field on the 8bit regime** (better blocky-art preservation than every tested competitor). Real
+game content mixes both regimes constantly, explaining the gap between narrow earlier tests and real
+screenshots. Not a tuning problem — T-046 already ruled that out. Proposed next steps: fix the
+performance issue first, then replace (not retune) T-018's edge-reconstruction algorithm, likely
+alongside T-023's native-resolution classification pass — each real, multi-session work, not
+attempted here. See `docs/backlog.md`'s T-047 entry and `tools/gold_eval/report.md`.
+
 ## Project structure
 
 ```

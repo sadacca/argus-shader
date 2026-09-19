@@ -627,6 +627,102 @@ near-miss here was almost trusting a narrower, session-local proxy metric instea
 tuning against it. Any future edge-reconstruction tuning should be checked against both the RPG/T-042
 IoU rubric *and* the diagonal-sweep sub-pixel metric before being treated as a real improvement.
 
+### T-047 — Real RetroArch findings force a rethink: unplayable + no smoothing benefit (added 2026-09-19)
+**Track A/B · L · depends on T-018, T-020, T-021, T-046 · new scope, high priority**
+The user ran argus-mobile-lite and xBRZ side-by-side in a real RetroArch install on a capable desktop
+GPU (screenshots reviewed, not committed — real game content, gitignored) and reported two serious
+problems this project's own synthetic testing had not surfaced: **(1) argus-mobile-lite is slow
+enough to be "nearly unplayable," while xBRZ is fast, on hardware with "plenty of horsepower"; (2)
+argus-mobile-lite provides "no benefit whatsoever" over doing nothing, while xBRZ "works brilliantly."**
+The user's own read: "our initial test cases were WAY off and our rendering is not capturing the
+differences."
+
+**On performance — a concrete, mechanistic hypothesis, not just T-043's bandwidth estimate.**
+Inspected the actual compiled GLES output (`spirv-cross` on the real fragment SPIR-V, not just source
+reading): `mobile-lite.slang`'s classification kernel stores all 25 taps of its 5x5 neighborhood into
+local arrays (`highp vec3 C[25]`, `highp float L[25]`) via one loop, then **re-reads those arrays
+across five separate subsequent loops** (mean/meanColor, variance, checkerboard-autocorrelation,
+luma-bin popcount, foreground-comparison). Dynamically-indexed local arrays read across multiple loop
+bodies are a well-documented GPU shader performance anti-pattern — many real GPU compilers can't prove
+the array is register-eligible across separate loops and spill it to slow per-thread scratch memory,
+turning what looks like "25 texture fetches" into potentially ~150 scratch-memory accesses per pixel.
+This is invisible in every check this project has run so far: llvmpipe (the only render environment
+available here) is a software rasterizer that doesn't model real GPU register allocation or spilling
+costs, and T-043's own bandwidth estimate only accounts for texture-fetch traffic, not this. **Not
+verified against real hardware** (none available in this environment, same limitation as T-006/T-021
+throughout this project) — a mechanistic hypothesis with concrete supporting evidence, not a
+confirmed root cause, but strong enough to prioritize.
+- [x] Compiled GLES output inspected directly (not source-level guessing) — confirmed the exact
+      write-once/read-five-times array pattern
+- [ ] Not yet fixed — the mechanical fix (eliminate the dynamically-indexed arrays: either fully
+      unroll into named scalars, or fuse the five reduction loops into the single fill loop using
+      only running accumulators) is well-understood but real, careful work needing bit-exact
+      re-verification against all 62 render-harness goldens before trusting it — deliberately not
+      rushed into this same session, per this project's own established discipline (see T-045)
+- [ ] No real-hardware confirmation exists yet either way — recommended as the actual next step once
+      a fix is attempted, not something this environment can supply
+
+**On visual quality — the RPG dialogue-box test case was genuinely unrepresentative, confirmed with
+new evidence, not just conceded.** Built a gold-standard eval per the user's own specification:
+`tools/gold_eval/` — the two shapes hardest for smoothing algorithms (a sharp acute **V** corner, a
+continuously-curved **O** ring), each scored in **two separate ground-truth regimes**, not one:
+- **vector** — the shape drawn at high supersampled resolution (a real smooth source exists) then
+  box-downsampled to native. Ground truth = the supersampled render. Tests recovering a hidden smooth
+  edge, the case xBRZ/SABR/ScaleFX are built for.
+- **8bit** — the shape drawn directly at native resolution with hard block placement, no supersampling
+  at all — genuine hand-pixelated art, no hidden smooth source. Ground truth = a plain
+  nearest-neighbour enlargement of that same native image. Tests *not* smoothing something that was
+  never meant to be smooth — the case T-016/T-017's classifier is actually built for.
+
+This two-regime design directly operationalizes the tension T-046 already named (IoU-vs-antialiased-
+ground-truth mechanically rewards smoothing) instead of leaving it implicit in a single metric choice.
+- [x] **Vector regime**: argus-mobile-lite is worst or second-worst of every real candidate on both
+      shapes — ties/loses to plain nearest-neighbour (80.5% vs 81.0% on `v_corner`; 82.9% vs 82.3% on
+      `o_ring`), while xBRZ/SABR/ScaleFX all clear nearest-neighbour by 9-13 percentage points. Visual
+      audit (`tools/gold_eval/audit/v_corner_vector.png`) shows why directly: argus's output is nearly
+      indistinguishable from blocky nearest-neighbour, plus **a visible cross-hatch artifact right at
+      the sharp vertex** — a real, newly-found defect at exactly the hard case this eval targeted, not
+      previously visible in less-adversarial content
+- [x] **8bit regime**: argus-mobile-lite is the *best* of every real candidate at leaving genuinely
+      blocky pixel art alone (93.0-93.6%, clearly ahead of every competitor's 80-88%) — real, measured
+      confirmation that T-016/T-017's classifier does what it was built to do, on the one axis it was
+      built for
+- [x] Confirms directly, with real numbers on the specific hard cases named, why the earlier RPG
+      dialogue-box test (T-011/T-022's `rpg_text_eval.py`) showed only a narrow gap: that content was
+      dominated by near-axis-aligned box borders and plain text strokes, almost entirely routing
+      through T-017's stroke-protect path — it barely exercised T-018's edge reconstruction at all
+      (T-046 experiment 1 already found this: disabling edge reconstruction didn't change the
+      dialogue-box score). The gold-eval's V/O shapes exercise exactly the path the RPG content
+      mostly bypassed.
+
+**Conclusion, stated as plainly as the evidence supports**: argus-mobile-lite currently has a real,
+measured strength (blocky-art preservation, better than any tested competitor) and a real, measured,
+severe weakness (smooth-edge recovery, worse than every tested competitor, on top of a likely serious
+unfixed performance problem). Real game content mixes both regimes constantly (crisp sprites *and*
+antialiased pre-rendered art, gradients, glow effects — exactly what the user's own FF5 title-screen
+screenshots show), so a shader strong on only one axis reads as broadly worse in actual play, matching
+what was reported. This is not a "tune the constants" problem (T-046 already ruled that out for the
+existing algorithm) — it needs either a materially better edge-reconstruction algorithm or a
+different architecture, both real, multi-session-sized work, not attempted in this ticket.
+
+**Proposed next steps, in priority order** (not started, this ticket is the evidence base for them):
+1. **Fix the performance anti-pattern first** — useless to improve visual quality on a shader too
+   slow to run. Rewrite the classification kernel to avoid dynamically-indexed arrays spanning
+   multiple loops; verify bit-exact against all 62 existing goldens before trusting it; get real
+   hardware confirmation if/when available (still blocked on T-006).
+2. **Replace T-018's edge-reconstruction algorithm**, not its parameters — the compass-snapping
+   limitation (T-018, T-044) plus this ticket's V/O results both point at the algorithm itself, and
+   T-046 already ruled out parameter tuning as sufficient. Needs an independently-authored technique
+   (per `docs/licensing.md`, T-001 — cannot port xBRZ/SABR/ScaleFX source) informed by published
+   descriptions of edge-directed interpolation, not a from-scratch guess.
+3. **Consider T-023's native-resolution classification pass** (Phase 2, already planned) as part of
+   the same redesign — separates classification from reconstruction, easing T-043's bandwidth overage
+   *and* enabling a more expensive, more accurate reconstruction step; two independent reasons now
+   point at the same architecture change.
+4. **Re-run this ticket's gold-eval harness (V/O, both regimes) after any of the above** — it is now
+   the project's standard for "did this actually help," alongside T-018's diagonal-sweep metric and
+   T-046's discipline of checking narrow proxies against a more general one before trusting them.
+
 ### T-022 — Phase 1 exit validation
 **Track A/B/C · M · depends on T-020, T-021, T-003, T-011**
 Gate Phase 1 against §10 exit criteria.
