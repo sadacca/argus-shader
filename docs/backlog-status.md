@@ -687,3 +687,41 @@ already compiles clean on all five backends and needs no further work to drop in
 install; this just documents install/load steps and how to pull SABR/ScaleFX/xBRZ from RetroArch's own
 bundled shader library for a real side-by-side, plus states the numeric result above up front so
 manual testing starts from an accurate expectation rather than the earlier, too-favorable framing.
+
+## Update — 2026-09-19 (continued: T-046 — iterative score optimization, one near-miss caught in time)
+
+The user's next ask, after seeing the honest numbers: "the goal is to maximize these scores... there's
+no reason we need to keep this as a single pass" — an explicit invitation to try real architecture
+changes, not just accept the tradeoff. Named the real tension up front before touching anything: IoU
+against a fully-antialiased ground truth mechanically rewards smoothing, the opposite of what FR2/
+T-017 are for — this isn't a number to blindly chase.
+
+Built a fast iteration tool (`tools/score_optimization/score_variant.py`) and ran real experiments
+rather than speculating. Two useful negative results: disabling T-018's edge reconstruction didn't
+help (slightly hurt `rpg_letters`); disabling T-017's text protection as a ceiling probe didn't help
+either (slightly hurt `rpg_dialogue_box`) — meaning the gap to xBRZ/SABR/ScaleFX isn't about
+protecting text costing score, it's that this project's own edge-reconstruction algorithm is simply
+less accurate than theirs where it engages.
+
+Then a real near-miss: sweeping T-018's blend-steepness constant found `N≈1.0-1.25` beats the shipped
+`N=2.0` by up to +1.8pp on both RPG scenes — looked like a genuine, safe, one-line win. **Checked it
+against T-018's own more rigorous, angle-diverse sub-pixel accuracy metric before trusting it**
+(`tools/edge_reconstruct/verify_gpu.py`, diagonal sweep 15°-75°, not just the RPG content's near-
+axis-aligned edges) — and it reversed: `N=1.0` raises sub-pixel error from `1.051px` to `1.539px`, a
+46% regression, flipping from "beats nearest-neighbour" to "loses to it." Confirmed the harness
+reproduces T-018's own baseline numbers exactly first, so this wasn't a measurement artifact. **The
+shipped `N=2.0` is already near-optimal on the metric that actually generalizes** — the RPG-content
+proxy, dominated by near-axis-aligned box-border/text edges, wasn't representative enough to guide
+this specific tuning, and following it would have shipped a real regression.
+
+**No shipped behavior change resulted this round** — every tested variant either didn't help or
+didn't survive cross-validation, and that's reported as the honest finding it is, not spun into a
+false win. Recommended next step (not attempted, deserves its own session): improve T-018's edge-
+reconstruction algorithm itself (the already-documented compass-snapping limitation, T-018/T-044) or
+pursue T-023's native-resolution classification pass — which both eases T-043's bandwidth overage and
+would enable a more accurate reconstruction step, two independent reasons pointing at the same
+architecture change. Full writeup in `docs/backlog.md`'s T-046 entry.
+
+**Kept the discipline that caught this**: any future edge-reconstruction tuning gets checked against
+both the RPG/T-042 IoU rubric and the diagonal-sweep sub-pixel metric before being called an
+improvement — this session is the reason that rule exists now, not a hypothetical.
