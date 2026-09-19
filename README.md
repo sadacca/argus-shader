@@ -148,6 +148,20 @@ to Omniscale on this metric for 3 of 4 shapes**, winning only on the letterform 
 its glyph protection strongest on — a more mixed picture, and the same shape of honest non-win as
 T-018's Omniscale comparison. See `tools/eval_metric/report.md`.
 
+**Update, 2026-09-19: T-043, an analytical B/px lower bound — and a real concern for T-022.** T-021/
+T-006 (measured bandwidth) remain blocked on physical handheld hardware this environment doesn't
+have, but T-006's own acceptance criteria call for a *calculated* B/px to validate a future
+measurement against — a hardware-independent number that didn't exist yet. Built it
+(`tools/bandwidth_estimate/`): an ideal-cache amortized-bandwidth estimate of mobile-lite's actual
+texture-read pattern, hand-verified against the shader source line-by-line. **Result: even under the
+most generous plausible caching assumption, mobile-lite's bandwidth already exceeds §6's 8 B/px
+ceiling at every scale in the realistic 2x-6x range** (15.1-40 B/px) — a direct, structural
+consequence of FR3's single-output-resolution-pass design re-running the full 5×5 classification
+kernel per output pixel rather than per native pixel (what Phase 2's T-023 exists to fix). Flagged
+plainly rather than left for T-006's hardware to discover later: **T-022 should not be assumed to
+pass its ≤8 B/px exit criterion as mobile-lite currently stands.** See
+`tools/bandwidth_estimate/report.md`.
+
 ## Project structure
 
 ```

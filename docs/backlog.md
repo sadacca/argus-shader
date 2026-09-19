@@ -417,12 +417,47 @@ fixed to `scale0 = 4.0`, all 60 goldens regenerated and visually spot-checked be
       would be an unverified change, which this project's discipline doesn't ship
 
 ### T-021 — Bandwidth (B/px) instrumentation
+**Status: blocked on T-006's physical device, same as T-006 itself.** An analytical lower bound
+(no hardware needed) is built as **T-043** — see its entry for a real, concerning finding: even
+under an idealized best-case cache assumption, mobile-lite's bandwidth already exceeds §6's ceiling
+at every realistic scale. Worth reading before assuming this ticket will simply confirm a pass once
+hardware is available.
 **Track B · M · depends on T-006**
 Wire the T-006 methodology into a repeatable measurement reported per tier alongside frame time
 (§6, O2).
 - [ ] Reports measured B/px, RT format sizes, and fetch count per tier
 - [ ] Runs on both reference handheld and desktop
 - [ ] Output is machine-readable so CI can assert against tier ceilings
+
+### T-043 — Analytical (no-hardware) B/px lower bound for mobile-lite (added 2026-09-19)
+**Track B · S · depends on T-020 · new scope**
+T-021/T-006 (real measured B/px) remain blocked on physical handheld hardware this environment
+doesn't have — but T-006's own acceptance criteria already need a *calculated* B/px to validate a
+future real measurement against (within ±15%), and that number didn't exist anywhere yet. Built it:
+`tools/bandwidth_estimate/calculate_bpx.py` hand-accounts mobile-lite.slang's actual texture-read
+pattern (a single RGBA8 `Source` texture, an unconditional 5×5 classification kernel, up to 9 more
+taps in the edge-reconstruction branch — all cited by line number in the script) and computes an
+ideal-cache (compulsory-misses-only) amortized-bandwidth lower bound across T-018's already-
+established 2x-6x realistic scale range.
+- [x] Fetch-instruction count per output pixel derived from source: 25 (flat/dither/stroke branches)
+      to 34 (edge-reconstruction branch)
+- [x] Amortized ideal-cache B/px lower bound computed at every scale in the 2x-6x range
+- [ ] Validated against a real measurement (T-006's own stated validation step — blocked on hardware,
+      same as T-006/T-021 themselves)
+
+**Real finding, reported plainly rather than filed away**: at every scale in the 2x-6x range, this
+lower bound already exceeds §6's 8 B/px mobile-lite ceiling — by 15.1 B/px at best (6x) up to 40 B/px
+(2x) — even under the most generous plausible caching assumption. This isn't a shader bug; it's the
+structural consequence of FR3's "1 output-resolution pass" definition, which necessarily re-runs the
+full 5×5 classification kernel once per *output* pixel rather than once per *native* pixel (the thing
+Phase 2's T-023 native-res classification pass exists specifically to fix, at the cost of a second
+pass). See `tools/bandwidth_estimate/report.md`'s "Reading this honestly" section for the full
+caveat: this is a lower bound, not a prediction — real hardware could do better than the idealized
+model assumes (mobile texture caches and tile-based rendering are often good at exactly this kind of
+local-stencil reuse) but cannot do worse. **T-022's "≤ 8 B/px measured" exit criterion should not be
+assumed achievable as mobile-lite currently stands** without either real hardware evidence to the
+contrary or a design change — flagged here as new scope for whoever picks up T-006/T-021/T-022 next,
+not asserted as a T-022 failure this ticket isn't positioned to call.
 
 ### T-022 — Phase 1 exit validation
 **Track A/B/C · M · depends on T-020, T-021, T-003, T-011**

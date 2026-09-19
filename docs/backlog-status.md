@@ -453,3 +453,43 @@ directory, nothing half-edited elsewhere, and the branch (`phase1/t003-render-ha
 7 commits through `add9be9`) was already pushed to `origin` in the meantime (see this repo's memory
 for the SSH-key/`workflow`-scope auth story, not repeated here). This T-042 work is commit
 `168a03b` on the same branch; PR still not opened.
+
+## Update — 2026-09-19 (T-043: an analytical B/px lower bound, and a real concern for T-022)
+
+With T-042 closed out and no other loose ends from the interruption, moved to the next item on the
+critical path: **T-022** (Phase 1 exit validation), which depends on T-021 (measured bandwidth), which
+is itself blocked on T-006 (physical reference handheld — still no device in this environment). Rather
+than stop there, noticed T-006's own acceptance criteria already call for a *calculated* B/px to
+validate a future real measurement against ("a known 2-pass shader measures within ±15% of its
+calculated B/px") — that calculated number is hardware-independent and didn't exist yet anywhere in
+this project. Built it as **T-043** (new ticket, new scope): `tools/bandwidth_estimate/
+calculate_bpx.py` hand-accounts mobile-lite.slang's actual texture-read pattern (cited by line number
+in the script, same rigor as `tools/edge_reconstruct/edge_reference.py`'s hand-ported CPU model) and
+computes an ideal-cache (compulsory-misses-only) amortized bandwidth lower bound across the same
+2x-6x scale range T-018 already established as realistic for this tier.
+
+**Real finding, not just tooling**: at every scale in that range, the lower bound already exceeds §6's
+8 B/px mobile-lite ceiling — 15.1 B/px at 6x, up to 40 B/px at 2x — even under the most generous
+plausible caching assumption a static analysis can make. This traces directly to what "mobile-lite = 1
+output-resolution pass" (FR3) structurally requires: the shipped shader's full 5×5 classification
+kernel runs once per *output* pixel, not once per *native* pixel, because there's no separate
+native-resolution pass (that's exactly what Phase 2's T-023 adds, at the cost of a second pass) to run
+it in once and reuse the result. Checked this wasn't an artifact of the analysis before writing it up:
+the edge-reconstruction branch's extra fetches (topology neighbors + directional blend sample) are all
+within the classification kernel's own ±2-texel footprint, so they don't change the unique-texel
+accounting — the 5×5 kernel alone already drives the whole result, at every branch.
+
+**Reported as a caveated lower bound, not a conclusion T-022 has failed** — this is exactly the kind
+of finding this project's docs discipline exists to catch honestly rather than let an untested
+"looks fine" assumption carry forward into T-022 (the same shape of catch as T-018's honest Omniscale
+non-win and T-042's own more-mixed-than-headline IoU result). Real hardware could still do better than
+the idealized sliding-window cache model assumes — tile-based mobile GPUs are often good at exactly
+this kind of small local-stencil reuse — but cannot do worse than this floor, so the gap (2-5x over
+budget depending on scale) is large enough to be worth flagging now rather than waiting for T-006's
+hardware to discover it. **T-022 should not be treated as a pass on the ≤8 B/px criterion without
+either real measurement evidence or a design change**, and this is now on record in both T-021's and
+T-022's own backlog entries for whoever picks this up next.
+
+Committed alongside this write-up. Branch remains unpushed at time of writing (pending: push before
+ending this session, per this repo's now-resolved SSH-key/`workflow`-scope auth story — see project
+memory, not repeated here).
