@@ -3,3 +3,9 @@ __pycache__/
 
 # T-011 comparison renders — regenerate with tools/comparison/generate_baselines.py
 tools/comparison/renders/
+
+# Real RetroArch/game screenshots dropped in for manual comparison — not
+# synthetic, not redistributable (T-007's real-game corpus question is
+# still open), never committed.
+argus.png
+xbrz.png
