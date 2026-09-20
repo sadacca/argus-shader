@@ -1,291 +1,85 @@
 # argus-shader
 
-A next-generation upscaling shader for 8-bit and 16-bit console pixel art, targeting RetroArch / libretro (and librashader-based frontends) via standard `.slangp` presets — no core modifications required.
+A GPU upscaling shader for 8-bit and 16-bit console pixel art, targeting RetroArch / libretro (and
+librashader-based frontends) via standard `.slangp` presets — no core modifications required.
 
-## Why
+## Goal
 
-Retro upscaling algorithms (xBRZ, HQx, ScaleFX, SABR, Omniscale) have plateaued since the early 2010s. Known gaps remain around:
+Treat 8/16-bit sprite and tile art as a low-resolution rasterization of art that implies shapes,
+curves, and letterforms beyond what the pixel grid can express — the same working assumption xBRZ,
+HQx, Omniscale, ScaleFX, and SABR already make — and reconstruct that continuous art as faithfully as
+possible, rather than leaving it blocky. The differentiator against the existing field is **text and
+glyph fidelity**: a well-documented weak point of these scalers (Omniscale visibly rounds glyph
+corners — see `tools/gold_eval/report.md`), and the content type players spend the most continuous
+time looking directly at.
 
-- Dithered and anti-aliased source art being destroyed as "noise" instead of preserved as intentional artist technique
-- Diagonal/curve reconstruction artifacts
-- Temporal shimmer on scrolling parallax backgrounds
-- Weak performance on ARM/handheld GPUs
+## Explicit pivot (2026-09-20)
 
-This project scopes and builds a shader (or shader pack) that closes those specific gaps rather than reinventing pixel-art scaling from scratch.
-
-## Goals
-
-- Sharp, clean upscaling that reads as an intentional HD remaster, not a blur or plastic-looking filter
-- Correctly preserve deliberate SNES/Genesis-era dithering and color-blending tricks
-- Reduce diagonal/curve artifacts beyond current ScaleFX/xBRZ baselines
-- Basic temporal stabilization for scrolling parallax, without added input lag
-- Ship as standard `.slangp` presets compatible with RetroArch and librashader
-- Run acceptably on ARM handheld GPUs (Retroid/Anbernic/Steam Deck class), not just desktop
-- Treat shader pass count as a first-class design constraint given mobile/tile-based GPUs are bandwidth-bound
+An earlier version of this project optimized for the opposite goal — preserving the source's blocky
+pixel grid and hand-placed dithering as an intentional artifact, with text specially routed to a
+"keep it blocky" path. This project's own gold-standard eval and real RetroArch testing both showed
+that was a mistake: it made the shader the worst candidate of six on genuinely smooth/curved content
+(tying or losing to doing nothing at all) while only winning on already-blocky content nobody asked
+to have preserved. **Preserving the blocky aesthetic is not a goal of this project.**
+`docs/requirements.md` has been rewritten around the corrected goal above.
 
 ## Non-goals
 
-- Full vector-based "Depixelizing Pixel Art" reconstruction
-- 3D/polygonal retro content (PS1/N64/Saturn) — 2D sprite/tile-based systems only for v1
-- General photoreal ML super-resolution
-- Replacing CRT/bezel shaders (Mega Bezel, CRT-Royale) — this composes with them, not competes
-
-## Design overview
-
-- **Tiered architecture budgeted by output-resolution passes**: mobile-lite (1 pass), mobile/mid (2 passes, 1 at output res), and desktop/high (up to 4 passes, ≤2 at output res). Each is a first-class shipped preset, not a degraded fallback. Budgeting *output-resolution* passes rather than total passes matters because a native-res intermediate costs ~0.2 bytes/output-pixel against ~8 for an output-res one.
-- **Dither/AA-aware edge classification** using a two-level scheme — a 256-entry 3×3 topology LUT for edge geometry, plus cheap wide-kernel scalar statistics for region class. Also detects thin monochrome text/glyph strokes and routes them to a minimal-interpolation path, since font-scale text is a well-documented failure mode of xBRZ/HQx-style edge reconstruction.
-- **Temporal stabilization via `OriginalHistory1`** — the previous frame's core input at *native* resolution, ~36× cheaper than reading back the previous frame's upscaled output, with no output-to-output feedback path to accumulate ghosting. Toggleable for latency-sensitive genres.
-- **Dual-axis tuning profiles**: an independent system profile (NES/SMS, SNES/Genesis, GB/GBC/GBA) for dither conventions, and a genre profile (fast-action, scrolling-heavy, text/low-motion, static/turn-based) for temporal and sharpening behavior. RetroArch doesn't support references-to-references, so the two axes are merged at build time into a generated flat preset matrix.
-
-Each tier carries a hard bandwidth ceiling in bytes per output pixel (8 / 10 / 32 B/px), measured rather than estimated — bandwidth, not ALU, is the binding constraint on the target hardware.
+- Preserving the source's blocky pixel grid or deliberate dithering as a protected texture — the
+  opposite of the goal above.
+- Full spline/vector-file output (Depixelizing Pixel Art-style vectorization) — this stays a
+  real-time raster shader; "vector-faithful" describes the reconstruction goal, not the output format.
+- 3D/polygonal retro content (PS1/N64/Saturn) — 2D sprite/tile-based systems only.
+- General photoreal ML super-resolution.
+- Replacing CRT/bezel shaders (Mega Bezel, CRT-Royale) — composes with them, doesn't compete.
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [`docs/requirements.md`](docs/requirements.md) | Full requirements — functional/non-functional requirements, mobile optimization strategy, integration path, validation plan, open questions, phasing with numeric exit criteria |
-| [`docs/review-notes.md`](docs/review-notes.md) | v0.1 → v0.2 technical review: four blocking corrections, optimizations, and process fixes, with sources |
-| [`docs/backlog.md`](docs/backlog.md) | 41 tickets across 5 phases, with acceptance criteria, dependencies, and the critical path |
+| [`docs/requirements.md`](docs/requirements.md) | Full spec — goals, non-goals, functional/non-functional requirements, validation plan |
+| [`docs/backlog.md`](docs/backlog.md) | Reusable infra, retired work, and what's next |
+| [`docs/backlog-status.md`](docs/backlog-status.md) | Current status and why the pivot happened |
+| [`docs/licensing.md`](docs/licensing.md) | License posture for reference shaders (xBRZ, ScaleFX, SABR, Omniscale, HQx) |
+| [`docs/gles-floor.md`](docs/gles-floor.md) | Target-device GLES floor decision |
+| [`docs/retroarch-testing.md`](docs/retroarch-testing.md) | How to load and A/B test presets in a real RetroArch install |
+| [`docs/review-notes.md`](docs/review-notes.md) | Engineering corrections from the v0.1→v0.2 review (items still valid are marked; superseded ones are noted) |
 
 ## Status
 
-Phase 0 (research & de-risking) is substantially complete. **T-004, the highest-risk item, passed**:
-the two-level classifier separates intentional dithering from already-anti-aliased gradients
-(0.906 vs. the 0.85 bar — see [`tools/classifier_spike/spike_report.md`](tools/classifier_spike/spike_report.md)),
-so the architecture in `docs/requirements.md` §6a.3 stands and Phase 1 is not re-scoped.
+Direction just changed (see pivot note above); the reconstruction algorithm itself is being
+redesigned from that corrected goal. What survives the pivot and is ready to reuse:
 
-Also done: licensing posture (T-001), the cross-backend compile gate (T-002), the GLES floor
-decision (T-005), the synthetic test corpus (T-008/T-009/T-010), the perceptual A/B harness
-(T-012), and the baked 3×3 topology LUT (T-014). See
-[`docs/backlog-status.md`](docs/backlog-status.md) for the full rundown.
+- **Evaluation harness** — headless golden-image render harness (`tools/render_harness/`),
+  ground-truth IoU scoring (`tools/eval_metric/`), the gold-standard V-corner/O-ring vector-vs-8bit
+  regime eval that's now the primary quality gate (`tools/gold_eval/`), perceptual A/B comparison
+  (`tools/ab_compare/`), and a working multi-pass renderer that runs real reference shaders —
+  nearest-neighbour, Omniscale, SABR, ScaleFX, xBRZ — for direct comparison (`tools/comparison/`).
+- **Build/CI infra** — cross-backend compile gate for both the slang and legacy GLSL packs
+  (`tools/compile_gate/`), synthetic test corpus generators (`tools/patterns/`).
+- **Decided groundwork** — licensing posture, GLES floor, preset pack structure.
 
-**Update, 2026-09-17:** this environment turned out to have a working software render backend after
-all (Mesa llvmpipe/Lavapipe via headless EGL — no `/dev/dri` needed), which unblocked and then built
-**T-003**, the golden-image regression harness (`tools/render_harness/`, 55 goldens seeded). Phase 1
-has also started: root preset skeletons exist for both the primary `.slangp`/`.slang` pack (**T-013**)
-and a newly-scoped parallel legacy `.glslp`/`.glsl` pack for pre-slang RetroArch installs (**T-040**),
-both passthrough passes, both compiling clean and rendering byte-identical to their source through
-the new harness. See `docs/backlog-status.md`'s 2026-09-17 update entries for what was actually built
-and two real bugs the new tooling caught along the way (a GLSL ES precision-declaration ordering bug
-in the legacy skeleton, and a silently-broken CI glob that meant shipped shaders were never actually
-being compile-gated).
-
-**Update, 2026-09-17 (continued):** the FR2 region classifier is built —
-**T-015** (wide-kernel scalar statistics) and **T-016** (four-class classifier) are a GLSL port of
-T-004's spike, verified against a CPU reference through the actual GLES render path
-(`tools/classifier_gpu/`, see its `report.md`). Porting to GLSL caught two more real numerical bugs
-(a 0/0-indeterminate checkerboard-autocorrelation ratio, and a unique-color-count proxy that needed
-32 luma bins, not 8), plus a GLES-300-vs-310 toolchain mismatch below this project's own decided
-GLES 3.1+ floor. **T-019** (dither preservation reconstruction rule) and **T-017** (text/glyph protection reconstruction
-rule) are also built (`tools/dither_reconstruct/`, `tools/text_protect/`, see each `report.md`) —
-verified the same way. Along the way, T-019 found that the existing synthetic corpus had no sample
-isolating "soft" (SNES-style, close-color) ordered dithering, so a new `corpus/synthetic/dither_soft/`
-category was added to actually test that acceptance criterion. T-017 found something more
-significant: **T-010's text-negative corpus (fur/hair, architectural grids, weapon-outline
-silhouettes) genuinely cannot be separated from real glyph strokes by T-015's four wide-kernel
-statistics** — measured 80.8% false-positive rate, and a direct per-statistic check confirms no
-threshold on the existing statistics would fix it. This isn't a new bug; T-004's original spike report
-and T-010 both flagged this risk and deferred it to exactly this point. Tracked as new scope in
-**T-041** rather than papered over — T-017's reconstruction rule itself is unaffected (nearest-
-preserving reconstruction is a safe fallback even when misrouted; see `tools/text_protect/report.md`).
-
-**T-018** (LUT-topology edge reconstruction, `tools/edge_reconstruct/`) is also built. Bringing it up
-surfaced a real, reproducible Mesa/llvmpipe compiler bug — a dynamically-indexed `texelFetch` on a
-second texture sampler corrupted unrelated shader state — isolated via bisection and worked around for
-this pre-fusion debug shader (embedding the LUT as a generated GLSL constant array instead of sampling
-its texture; the real shipped pass should still use the texture as T-014 designed, re-verified against
-a real GPU driver). It also reports an honest non-result rather than a favorable cherry-pick: an
-initial single-scale check showed this rule beating Omniscale on sub-pixel edge accuracy, but testing
-across every scale this tier would realistically run at (2x-6x) shows it only wins 1 of 5 — that
-acceptance box is left open with the full comparison table, not checked off.
-
-Still genuinely blocked — real handheld bring-up (T-006), a real-game content corpus (T-007), and the
-copyleft half of cataloging existing shaders' failure modes (T-011) — need a physical reference device
-or a human call on licensing/content sourcing, not a tooling gap. Each is documented in
-`docs/backlog-status.md` with what specifically would unblock it.
-
-**Update, 2026-09-17 (continued once more): T-020 is built — mobile-lite is now a real, shippable
-shader, not a skeleton.** `shaders/shaders_slang/argus/shaders/mobile-lite.slang` fuses T-016's
-classifier with T-017/T-018/T-019's per-class reconstruction rules into the single output-resolution
-pass FR3 requires. Fusion is verified exact against each already-correct contributing debug shader
-(0-pixel difference, not a tolerance pass — see `tools/fusion/report.md`), the compile gate passes
-clean on all five backends, and the render harness's 60 regression goldens all match. Along the way
-this ticket found and fixed a real gap in the render harness's own goldens: they were pinned at
-`scale0 = 1.0` (inherited from T-013's original passthrough skeleton), which made T-018's edge
-reconstruction a mathematical no-op — a clean "PASS" that was silently checking nothing of this
-ticket's logic. Fixed by testing at `scale0 = 4.0` (the middle of the realistic 2x-6x range), with
-every regenerated golden visually spot-checked before committing. **This is the milestone the shader
-is ready for a human to actually look at (UAT)** — see `tools/fusion/report.md`'s visual spot-check
-table, or render any corpus sample through `argus-mobile-lite.slangp` directly.
-
-Two threads carried in from earlier tickets remain open and untouched by T-020 — T-018's honest
-Omniscale non-win (wins 1 of 5 tested scales) and T-041's classifier separability — plus two new ones
-this ticket surfaced: `textureGather` adoption (a tracked perf optimization, not attempted) and the
-`mediump`-vs-`highp` precision question T-015's own report flagged as deferred to T-020 (kept `highp`
-throughout; downgrading without real hardware to catch an overflow regression would be an unverified
-change). None of these block T-020 or UAT. **T-022** (Phase 1 exit validation — perceptual comparison,
-bandwidth, frame time, false-positive-rate threshold) is the next item on the critical path and has
-explicitly not been run yet; T-040's legacy-pack port of this fused logic also remains open.
-
-**Update, 2026-09-17 (continued once more): a real comparison set against Omniscale, with a
-documented glyph-preservation win.** `tools/comparison/` renders the full synthetic corpus through
-argus-mobile-lite, Omniscale, and nearest-neighbour at matched scale (T-011). Headline result: on
-glyph content, argus-mobile-lite is pixel-identical to nearest-neighbour (T-017's text protection
-working as designed) while Omniscale visibly rounds glyph corners — the largest, most visually clear
-gap in the set. ScaleFX (MIT, cleared) is vendored but not executable yet — it's a 6-pass filter
-chain and this project's render harness is single-pass only. xBRZ/SABR/HQx were deliberately not
-vendored or run at all — copyleft licenses with no permissive subset for execution, and T-011 already
-flags that as a call for the project owner to make, not one to decide unilaterally. See
-`tools/comparison/report.md` for the full breakdown.
-
-**Update, 2026-09-18: T-042, a standardized ground-truth overlap metric, finished and committed** —
-built the same session as T-011 but left uncommitted when that session was interrupted; picked back
-up, re-verified (`run_eval.py` reproduces its own committed report byte-for-byte), and closed out.
-`tools/eval_metric/` scores every executable baseline against IoU of a binarized shape mask from an
-8x-supersampled ground truth, covering a curve and real letterforms rather than only straight lines.
-Reported honestly rather than only citing T-011's favorable glyph result: **argus-mobile-lite loses
-to Omniscale on this metric for 3 of 4 shapes**, winning only on the letterform T-011 already found
-its glyph protection strongest on — a more mixed picture, and the same shape of honest non-win as
-T-018's Omniscale comparison. See `tools/eval_metric/report.md`.
-
-**Update, 2026-09-19: T-043, an analytical B/px lower bound — and a real concern for T-022.** T-021/
-T-006 (measured bandwidth) remain blocked on physical handheld hardware this environment doesn't
-have, but T-006's own acceptance criteria call for a *calculated* B/px to validate a future
-measurement against — a hardware-independent number that didn't exist yet. Built it
-(`tools/bandwidth_estimate/`): an ideal-cache amortized-bandwidth estimate of mobile-lite's actual
-texture-read pattern, hand-verified against the shader source line-by-line. **Result: even under the
-most generous plausible caching assumption, mobile-lite's bandwidth already exceeds §6's 8 B/px
-ceiling at every scale in the realistic 2x-6x range** (15.1-40 B/px) — a direct, structural
-consequence of FR3's single-output-resolution-pass design re-running the full 5×5 classification
-kernel per output pixel rather than per native pixel (what Phase 2's T-023 exists to fix). Flagged
-plainly rather than left for T-006's hardware to discover later: **T-022 should not be assumed to
-pass its ≤8 B/px exit criterion as mobile-lite currently stands.** See
-`tools/bandwidth_estimate/report.md`.
-
-**Update, 2026-09-19 (continued): T-044, a small, real, well-understood text regression.** T-042's
-own table showed argus-mobile-lite scoring *below* nearest-neighbour on `letter_A` — investigated
-rather than cited at face value (`tools/eval_metric/text_legibility_diff.py`). Found a real but small
-regression (174/215 pixels on `letter_A`/`letter_g`, ~0.1-0.6% of the image) and visually confirmed
-every one sits on a curved stroke or sharp corner, never a flat interior — the same compass-snapping
-limitation T-018 already documented, showing up on a different, anti-aliased corpus. **T-022's "text
-legibility no worse than nearest-neighbour" box should be checked against this finding, not assumed
-to pass by citing T-011's pixel-identical result alone.** Two of T-022's six exit criteria now have
-concrete, hardware-independent evidence against a clean pass (T-043, T-044); see
-`docs/backlog-status.md`'s latest update for the full picture of where T-022 actually stands.
-
-**Update, 2026-09-19 (continued): T-045 — a real bug in T-040's foundation, caught before it shipped.**
-Before porting T-020's actual math into the legacy `.glsl` pack, checked how RetroArch's real legacy
-driver decides a shader's compiled GLSL version (read `gl_glsl_compile_shader()` directly from
-github.com/libretro/RetroArch) rather than trust the existing skeleton's own header comments. Found
-two real problems: the skeleton had **no `#version` line at all** (the real driver injects none
-either in that case, silently falling back to GLSL ES 1.00 — incompatible with the `texelFetch`/
-`bitCount` the ported logic needs), and even declaring a version needed the *exact* number `330` —
-the real driver remaps a declared version on GLES3 targets (`330` → `"310 es"`, anything below that
-→ only `"300 es"`), and this project's own T-005 floor needs ES 3.10 specifically. Fixed both:
-`mobile-lite.glsl` now declares `#version 330`, and `tools/compile_gate/compile_check_legacy.py` was
-rewritten to simulate the real remap instead of externally forcing a version (which had also become
-syntactically invalid the moment the file declares its own). Verified nothing else regressed — slang
-gate and all 60 render-harness goldens still pass. The actual math port and a legacy-pipeline render
-harness remain open (T-040), deliberately not attempted on the same pass as this foundation fix.
-
-**Update, 2026-09-19 (continued): T-011 — SABR, ScaleFX, and xBRZ actually running now, with a visual
-comparison published.** Correction first: an earlier update characterized pausing on SABR/xBRZ/HQx as
-"asked the user directly" — that was inaccurate; it was this project's own conservative choice, not a
-decision the user had actually been asked to hold. The user corrected this and gave the go-ahead
-directly. Built `tools/render_harness/render_multipass.py` (a real multi-pass filter-chain sequencer,
-previously missing) and got SABR (GPLv2+, turned out to be single-pass — no new infra needed), ScaleFX
-(MIT, vendored since 2026-09-17 but unexecutable until now), and xBRZ (GPLv3, embedded) all rendering
-correctly — verified via per-channel spatial variance, not just eyeballing, after catching a flattened-
-statistics diagnostic mistake in the process. Building the sequencer found and fixed several real bugs:
-a wrong vendoring path depth for ScaleFX's `stock.slang` reference (never caught because ScaleFX was
-never executed before), unset `#pragma parameter` defaults causing a real NaN-producing divide-by-zero,
-and inconsistent push-constant block naming (`params` vs `registers`) across real third-party shaders.
-HQx was attempted last and set aside — renders without error but produces a visibly wrong result from
-an unresolved bug, and it's also the most legally marginal of the three per `docs/licensing.md`, so
-further debugging wasn't worth chasing given three of four were already newly unblocked. Source for
-SABR/xBRZ is fetched to a scratch location, never vendored into this repo's git history — only
-rendered output is committed. Generated RPG-specific content (`tools/comparison/generate_rpg_text.py`
-— a dialogue box and individual letterforms at native SNES-class resolution) and published a visual
-comparison across all six now-available baselines: **https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU**.
-See `docs/backlog-status.md`'s 2026-09-19 update for the full bug list and what's still not done
-(the newly-unblocked baselines haven't been run against the full existing synthetic corpus yet, only
-this session's new RPG content).
-
-**Update, 2026-09-19 (continued): a real orientation bug the user caught, and the honest numeric
-result.** The per-channel spatial-variance check above verified each pass produced real, non-flat
-output — it did not check *orientation*, and ScaleFX's published render was upside down. Root cause:
-`render_multipass.py` used one fixed vertex quad for every pass, correct only for the first pass's
-freshly-uploaded texture — every later pass's FBO-sourced input is stored bottom-up by OpenGL, so each
-pass flips the image's vertical convention, and a chain's final orientation depended on its pass count
-being even or odd (ScaleFX's 6 came out flipped; xBRZ's 3 were accidentally correct). Fixed and
-re-verified visually. Then built `tools/eval_metric/rpg_text_eval.py` (T-042's own ground-truth
-method) for the numeric comparison this always needed: **xBRZ scores highest on both scenes, SABR and
-ScaleFX both beat argus-mobile-lite, and argus-mobile-lite is within noise of plain
-nearest-neighbour** — not the picture the visual-only comparison suggested. Republished with the fix
-and this table: https://claude.ai/artifact/QgL8kSGvzWtwo94eksnJGU. Also added
-`docs/retroarch-testing.md` for real side-by-side testing — the shader pack itself needs no further
-work, just install steps.
-
-**Update, 2026-09-19 (continued): T-046, iterative score optimization — one real near-miss caught.**
-Asked to maximize the IoU score, including trying multi-pass architectures. Named the tension first:
-IoU against an antialiased ground truth rewards smoothing, the opposite of what FR2/T-017 are for.
-Built `tools/score_optimization/score_variant.py` and ran real experiments: disabling T-018's edge
-reconstruction or T-017's text protection didn't help (the gap to xBRZ/SABR/ScaleFX isn't about
-protecting text costing score — it's that this project's own reconstruction algorithm is less accurate
-where it engages). A blend-steepness tweak that looked like a genuine +1.8pp win on the RPG content
-**reversed under T-018's own more rigorous, angle-diverse sub-pixel accuracy metric** (46% worse,
-flips from beating nearest-neighbour to losing to it) — the shipped constant was already near-optimal;
-the RPG-content proxy just wasn't representative enough to tune against. No shipped change this
-round — reported honestly as a null result, with a concrete, well-evidenced recommendation for the
-real next step (improve T-018's algorithm itself, or pursue T-023's native-res classification pass).
-
-**Update, 2026-09-19 (continued): T-047 — real RetroArch testing forces a rethink.** The user ran
-argus-mobile-lite and xBRZ side-by-side on real hardware: "argus is slow and nearly unplayable...
-argus has no benefit whatsoever to smoothing... xbrz looks great." Both findings hold up under
-investigation. **Performance**: inspecting the actual compiled GLES output found a real anti-pattern —
-the classification kernel stores 25 taps into local arrays, then reads them back across five separate
-loops, a well-known GPU register-spilling hazard invisible to this project's software-rasterizer-only
-testing. **Quality**: built the gold-standard eval the user specified — a sharp V corner and a curved
-O ring, each scored against both a true smooth source ("vector" regime) and genuinely blocky pixel art
-("8bit" regime), rather than one blended metric. **argus-mobile-lite is worst-of-field on the vector
-regime (ties/loses to nearest-neighbour, plus a newly-found artifact at the sharp vertex) and
-best-of-field on the 8bit regime** (better blocky-art preservation than every tested competitor). Real
-game content mixes both regimes constantly, explaining the gap between narrow earlier tests and real
-screenshots. Not a tuning problem — T-046 already ruled that out. Proposed next steps: fix the
-performance issue first, then replace (not retune) T-018's edge-reconstruction algorithm, likely
-alongside T-023's native-resolution classification pass — each real, multi-session work, not
-attempted here. See `docs/backlog.md`'s T-047 entry and `tools/gold_eval/report.md`.
+What's retired: the dither-vs-AA-gradient classifier, the text-to-nearest-neighbour protection path,
+and the shipped `mobile-lite.slang` prototype built on both. Kept in git history, not the current
+direction. Full breakdown: `docs/backlog-status.md`.
 
 ## Project structure
 
 ```
-docs/
-  requirements.md      Full requirements document (v0.2)
-  review-notes.md       Technical review behind the v0.2 revisions
-  backlog.md            Phased ticket backlog with acceptance criteria
-  backlog-status.md     What's done, what's blocked, and on what (this build session)
-  licensing.md           T-001: license posture for reference shaders
-  gles-floor.md          T-005: target-device GLES floor decision
+docs/                     Requirements, backlog, and decision records (see table above)
 tools/
-  compile_gate/          T-002: stub .slang pass + cross-backend compile check;
-                          compile_check_legacy.py (T-040): legacy .glsl compile check
-  classifier_spike/      T-004: offline classifier feasibility spike + report
-  classifier_gpu/        T-015/T-016: GLSL classifier + CPU reference + verify + report
-  dither_reconstruct/    T-019: dither-preservation reconstruction rule + verify + report
-  text_protect/          T-017: text/glyph protection reconstruction rule + verify + report
-                          (also surfaced T-041, a new open classifier-separability ticket)
-  edge_reconstruct/      T-018: LUT-topology edge reconstruction + verify + report
-                          (reference_shaders/: vendored MIT Omniscale, comparison-only)
-  patterns/               T-008/T-009/T-010: synthetic test corpus generators
-  lut/                    T-014: 3x3 topology LUT generator + invariant tests
-  ab_compare/             T-012: perceptual A/B comparison harness
-  render_harness/         T-003: headless EGL/GLES render + golden-image diff/update
-                          (goldens/ holds the committed reference PNGs)
+  render_harness/          Headless EGL/GLES render + golden-image diff/update
+  eval_metric/              Ground-truth IoU scoring against a supersampled reference
+  gold_eval/                V-corner/O-ring vector-regime vs. 8bit-regime eval — the primary quality gate
+  ab_compare/               Perceptual A/B comparison harness
+  comparison/               Runs nearest-neighbour/Omniscale/SABR/ScaleFX/xBRZ for direct comparison
+  compile_gate/             Cross-backend (.slang + legacy .glsl) compile check
+  patterns/                 Synthetic test corpus generators
+  <others>                  Earlier prototype work — see docs/backlog-status.md for what's retired
 shaders/
-  shaders_slang/argus/     Primary .slangp/.slang pack (T-013)
-  shaders_glsl/argus/      Parallel legacy .glslp/.glsl pack (T-040)
-corpus/synthetic/        Generated test images (dither ramps, diagonal sweeps,
-                          glyph sheets, checkerboard blocks, text pos/neg sets)
+  shaders_slang/argus/      Primary .slangp/.slang pack
+  shaders_glsl/argus/       Parallel legacy .glslp/.glsl pack
+corpus/synthetic/          Generated test images
 .github/workflows/
-  compile-gate.yml        CI: T-002/T-040 compile gates + T-003 render harness
+  compile-gate.yml          CI: compile gates + render harness
 ```

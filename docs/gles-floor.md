@@ -1,9 +1,10 @@
 # GLES Floor of the Target Device Matrix
 
-**Resolves:** [T-005](backlog.md#t-005--determine-the-gles-floor-of-the-target-device-matrix) — Phase 0,
-Track B, blocks T-020. Decides whether the mobile-lite tier (T-020) can depend on `textureGather`
-(GLES 3.1+ core, per docs/review-notes.md O3) or must carry a GLES 3.0 scalar-fetch fallback path
-(§6a.6).
+**Resolves:** the GLES floor of the target device matrix (see [`docs/backlog.md`](backlog.md), "Reusable"
+table). Decides whether a future mobile-tier reconstruction pass can depend on `textureGather`
+(GLES 3.1+ core, per `docs/review-notes.md` O3) or must carry a GLES 3.0 scalar-fetch fallback path.
+This decision is independent of the v0.3 pivot (`docs/requirements.md`) — it's a device-capability
+fact, not tied to the retired dither/text-protection architecture that originally motivated it.
 
 ## 1. Target device matrix
 
