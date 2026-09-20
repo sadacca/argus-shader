@@ -63,6 +63,11 @@ What's retired: the dither-vs-AA-gradient classifier, the text-to-nearest-neighb
 and the shipped `mobile-lite.slang` prototype built on both. Kept in git history, not the current
 direction. Full breakdown: `docs/backlog-status.md`.
 
+**Next cycle is queued** in [`docs/backlog.md`](docs/backlog.md) — two tracks (visual fidelity and
+GPU/CPU performance), each ticket carrying numeric acceptance gates drawn from the measured baseline
+table, and each written against a line-by-line diagnosis of why the retired prototype scored and
+performed as it did (`docs/backlog-status.md`).
+
 ## Project structure
 
 ```

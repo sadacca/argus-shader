@@ -145,8 +145,11 @@ validation mechanism:
 
 - What reconstruction technique moves the vector-regime score from 80.5%/82.9% (current prototype)
   toward xBRZ's 93.4%/95.2%, while staying implementable clean-room (xBRZ itself can't be ported
-  directly — GPLv3)? Candidates to study from public descriptions/MIT sources: xBRZ's own published
-  rule-set writeups, Omniscale's approach with a corner-rounding fix, ScaleFX's contour-following.
+  directly — GPLv3)? **Leading candidate, queued as `docs/backlog.md` F-2/F-3:** estimate a local
+  implicit contour per source pixel (continuous orientation, not snapped to 8 compass directions)
+  and rasterize it with analytic coverage, using a two-half-plane "wedge" model where edges meet so
+  sharp corners and 1-2px strokes survive intact. This is a hypothesis with a clear mechanism and a
+  numeric gate, not a decided design — it is expected to be tested and reported honestly either way.
 - Is a dedicated glyph-shape prior (recognizing "this is probably a font stroke" and reconstructing
   accordingly) still useful for FR3 now that it's an accuracy target rather than a routing decision —
   or does a strong general reconstruction rule already get there?
