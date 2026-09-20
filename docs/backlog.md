@@ -38,7 +38,7 @@ Kept in git history for reference, not deleted, not on the active path.
 | Text-to-nearest-neighbour "protection" rule | `tools/text_protect/` | Directly contradicts the new goal — text now gets the same reconstruction pipeline, judged on fidelity (FR3), not exempted from it |
 | Text-negative false-positive test set | `corpus/synthetic/text_negative/` | Existed to gate the text-protection classifier above; no classifier to gate |
 | Dual-axis system/genre tuning-profile design | (was v0.2 requirements §5 FR9) | Tuned dither-preservation strength per console; no longer applicable |
-| Shipped `mobile-lite.slang` prototype | `shaders/shaders_slang/argus/shaders/mobile-lite.slang` | Fuses all of the above; scores worst-of-field on vector-regime content (`tools/gold_eval/report.md`) and has a real, evidenced GPU register-spilling anti-pattern found via real RetroArch testing |
+| Shipped `mobile-lite.slang` prototype | `shaders/shaders_slang/argus/experimental/shaders/mobile-lite.slang` (moved out of the shipped pack by P-3, 2026-09-20) | Fuses all of the above; scores worst-of-field on vector-regime content (`tools/gold_eval/report.md`) and has a real, evidenced GPU register-spilling anti-pattern found via real RetroArch testing |
 | LUT-topology edge reconstruction (as tuned) | `tools/edge_reconstruct/` | The general technique (3×3 topology LUT → reconstruction rule) is still sound and worth keeping as a *reference implementation to improve on* — but its tuned output is what scored 80.5%/82.9% in §4, below xBRZ/SABR/ScaleFX, so it's a starting point, not a keeper as-is |
 
 ## Archived tickets
@@ -79,11 +79,20 @@ From `tools/gold_eval/report.md`, vector regime (V-corner / O-ring), which is th
   this project retired, and chasing it would re-import the reversed goal. The guard only says: don't
   be worse than the competition at leaving genuinely blocky art alone.
 
+**These are no longer just documented — they're enforced.** `tools/gold_eval/gates.py` (2026-09-20)
+is the executable source of truth for the three thresholds above; `run_eval.py` checks every
+`argus-*` candidate against all three on every run, prints the result, appends a "Fidelity gate
+status" section to `tools/gold_eval/report.md`, and exits non-zero if the regression guard fails.
+Wired into CI (`.github/workflows/compile-gate.yml`) so gate status is tracked on every push, not
+just when someone remembers to run `gold_eval` by hand. The primary/interim gates are tracked and
+reported but don't fail CI yet — no candidate is expected to clear them until F-2/F-3 land, and a
+build that's red for known, in-progress work teaches everyone to ignore red builds.
+
 ---
 
 ## Track F — visual fidelity
 
-### F-1 — CPU reference implementation of the reconstruction model *(do this first)*
+### F-1 — CPU reference implementation of the reconstruction model ✅ done 2026-09-20 *(do this first)*
 **Goal.** A numpy implementation of the candidate reconstruction, scored directly by
 `tools/gold_eval`, with no shader compile or GPU in the loop.
 **Why.** The algorithm is the risk, not the shader. Today every candidate costs a
@@ -94,6 +103,24 @@ entirely. Every previous algorithmic conclusion in this project was reached thro
 `tools/gold_eval/report.md` within ±0.5pp when fed the same logic (proving the reference path is
 faithful), then serves as the iteration surface for F-2/F-3. Runs the full four-shape sweep in
 < 5 seconds.
+**Done.** `tools/gold_eval/cpu_reference.py`: a faithful numpy port of the retired shader's
+classify+reconstruct logic, structured as one `reconstruct(native_rgb, scale, params)` entry point —
+this is the surface F-2/F-3 replace. Matches the published GPU numbers within 0.07pp on all four
+(shape × regime) combinations and runs the full sweep in 0.17-0.3s, ~20-30x under the 5s gate
+(`tools/gold_eval/validate_cpu_reference.py`, now a CI step needing only numpy/Pillow — no
+glslangValidator, no EGL). Registered as the `argus-cpu-ref` candidate in `run_eval.py` alongside the
+GPU-rendered `argus-mobile-lite`, so every future `gold_eval` run shows both side by side as a live
+equivalence check, not just the one-time validation. `run_eval.py`'s scoring helpers (`score`, `label`,
+`nearest_neighbour`, `contact_sheet`) were split into `scoring.py` so the CPU path has zero OpenGL/EGL
+imports anywhere in its dependency graph — `render_pass`/`render_multipass` are now lazily imported in
+`run_eval.py` only when a GPU-rendered candidate actually runs, which is also what makes the new
+`--skip-gpu` flag work in environments (like this one, this session) that have never had the GLES/EGL
+stack installed at all — see P-5. Verified via `--skip-gpu` here (no glslangValidator/EGL available in
+this session either — another live data point for P-5); the committed `tools/gold_eval/report.md`
+still reflects its last full GPU run and needs one more full (non-`--skip-gpu`) pass, in an
+environment with the GLES toolchain, to pick up the new `argus-cpu-ref` column and gate section —
+not done here since it would otherwise silently drop the omniscale/argus-mobile-lite/scalefx columns
+the committed report currently has.
 
 ### F-2 — Continuous-orientation contour estimation (replaces compass snapping)
 **Goal.** Per source pixel, estimate a local edge as a continuous orientation + signed offset (an
@@ -178,7 +205,7 @@ register estimates with no device); fall back to SPIR-V/spirv-cross statistics i
 shaders; regression fails the build. Honest note in the report about what static analysis can and
 can't tell you without hardware.
 
-### P-3 — Remove the known-bad preset from the shipped pack
+### P-3 — Remove the known-bad preset from the shipped pack ✅ done 2026-09-20
 **Goal.** Stop shipping `argus-mobile-lite.slangp` as a loadable preset — move it under an
 `experimental/` path or remove it until the F track produces a replacement.
 **Why.** It is currently measured as worse than doing nothing on the content most real games are made
@@ -186,6 +213,16 @@ of, and `docs/retroarch-testing.md` tells users how to load it. Shipping a prese
 underperforms nearest-neighbour is a correctness problem, not a cosmetic one.
 **Acceptance.** Pack contains no preset that fails the regression guard; `docs/retroarch-testing.md`
 updated to match; CI's shader globs still cover whatever remains.
+**Done.** Moved to `shaders/shaders_slang/argus/experimental/` and
+`shaders/shaders_glsl/argus/experimental/` (both `.slangp`/`.glslp` headers now say so explicitly);
+`shaders/shaders_slang/argus/` itself now ships nothing. Every tool that hardcoded the old path
+(`tools/gold_eval/`, `tools/eval_metric/`, `tools/comparison/`, `tools/fusion/`,
+`tools/bandwidth_estimate/`) updated to the new one. `tools/render_harness/run_harness.py`'s
+`PRESET_DIRS` now includes the `experimental/` subdirectory, so the retired prototype stays
+golden-regression-tested as a baseline rather than silently dropping out of CI — it just isn't what a
+user finds browsing the pack. `docs/retroarch-testing.md` rewritten to lead with "there is no shipped
+preset yet" instead of install instructions. CI's `shaders/**/*.slang` glob is recursive and needed no
+change.
 
 ### P-4 — Make the dev loop fast
 **Goal.** Cache shader compiles by source hash and reuse one EGL context across renders in

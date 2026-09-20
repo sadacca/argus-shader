@@ -22,7 +22,7 @@ sys.path.insert(0, str(REPO_ROOT / "tools" / "render_harness"))
 
 from render_pass import render_pass  # noqa: E402
 
-FUSED = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "shaders" / "mobile-lite.slang"
+FUSED = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "experimental" / "shaders" / "mobile-lite.slang"
 CLASSIFY = REPO_ROOT / "tools" / "classifier_gpu" / "classify_debug.slang"
 DITHER = REPO_ROOT / "tools" / "dither_reconstruct" / "dither_debug.slang"
 TEXT = REPO_ROOT / "tools" / "text_protect" / "text_debug.slang"

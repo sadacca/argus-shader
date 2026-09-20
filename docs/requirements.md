@@ -160,7 +160,8 @@ validation mechanism:
 
 ## 9. What changed from v0.2, and why
 
-v0.2's shipped prototype (`shaders/shaders_slang/argus/shaders/mobile-lite.slang`) implemented: a
+v0.2's shipped prototype (now `shaders/shaders_slang/argus/experimental/shaders/mobile-lite.slang`,
+moved out of the shipped pack per `docs/backlog.md` P-3) implemented: a
 four-class region classifier (hard-edge / dither / AA-gradient / text-glyph), a dither-preservation
 reconstruction rule, and a text-to-nearest-neighbour protection rule. Two independent pieces of
 evidence showed this was the wrong goal, not just an under-tuned implementation:

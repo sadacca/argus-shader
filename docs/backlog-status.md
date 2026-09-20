@@ -47,7 +47,7 @@ be checked for this pattern in compiled output, not just reviewed at the source 
 
 ## Code-level diagnosis of the retired prototype (2026-09-20)
 
-Read `shaders/shaders_slang/argus/shaders/mobile-lite.slang` directly to establish *why* it scored
+Read `shaders/shaders_slang/argus/experimental/shaders/mobile-lite.slang` directly to establish *why* it scored
 and performed the way it did, rather than carrying forward hypotheses. Three findings, all verifiable
 by line number, and together they are the evidence base for the next cycle's plan (`docs/backlog.md`):
 

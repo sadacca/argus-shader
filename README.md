@@ -82,8 +82,9 @@ tools/
   patterns/                 Synthetic test corpus generators
   <others>                  Earlier prototype work — see docs/backlog-status.md for what's retired
 shaders/
-  shaders_slang/argus/      Primary .slangp/.slang pack
-  shaders_glsl/argus/       Parallel legacy .glslp/.glsl pack
+  shaders_slang/argus/      Primary .slangp/.slang pack (currently empty — no preset shipped, see below)
+    experimental/            Retired prototype, kept only as an eval-harness baseline — do not install
+  shaders_glsl/argus/       Parallel legacy .glslp/.glsl pack (same status as above)
 corpus/synthetic/          Generated test images
 .github/workflows/
   compile-gate.yml          CI: compile gates + render harness

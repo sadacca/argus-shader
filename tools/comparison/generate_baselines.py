@@ -27,7 +27,7 @@ sys.path.insert(0, str(REPO_ROOT / "tools" / "render_harness"))
 
 from render_pass import render_pass, parse_pragma_parameter_defaults  # noqa: E402
 
-MOBILE_LITE = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "shaders" / "mobile-lite.slang"
+MOBILE_LITE = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "experimental" / "shaders" / "mobile-lite.slang"
 OMNISCALE = REPO_ROOT / "tools" / "edge_reconstruct" / "reference_shaders" / "omniscale.slang"
 CORPUS_DIR = REPO_ROOT / "corpus" / "synthetic"
 OUT_DIR = Path(__file__).resolve().parent / "renders"

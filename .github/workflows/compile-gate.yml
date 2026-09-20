@@ -49,6 +49,12 @@ jobs:
       - name: Compile the T-015/T-016 classifier debug shader
         run: python3 tools/compile_gate/compile_check.py tools/classifier_gpu/classify_debug.slang
 
+      - name: Install Python deps for the CPU-only fidelity reference (F-1, no GPU/EGL needed)
+        run: pip3 install --user --break-system-packages numpy Pillow
+
+      - name: Validate the CPU reference against the published GPU baseline (F-1)
+        run: python3 tools/gold_eval/validate_cpu_reference.py
+
   render-harness:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -68,3 +74,12 @@ jobs:
 
       - name: Run T-015/T-016 classifier verification against the CPU reference
         run: python3 tools/classifier_gpu/verify_gpu.py
+
+      - name: Run the gold-standard V/O fidelity eval and check its numeric gates (Track F)
+        # No --sabr/--xbrz: their source lives outside this repo (docs/licensing.md,
+        # clean-room only) and isn't fetched in CI. Exits non-zero only on a
+        # regression-guard failure — the primary/interim fidelity gates are
+        # tracked in the job log and in tools/gold_eval/report.md's "Fidelity
+        # gate status" section but don't fail the build until Track F lands
+        # (docs/backlog.md); see run_eval.py's module docstring for why.
+        run: python3 tools/gold_eval/run_eval.py

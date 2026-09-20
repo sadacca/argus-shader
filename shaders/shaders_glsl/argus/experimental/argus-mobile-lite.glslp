@@ -1,0 +1,13 @@
+# RETIRED / EXPERIMENTAL — not a recommended preset. See the slang pack's
+# experimental/argus-mobile-lite.slangp for why (docs/backlog.md P-3);
+# this file is its legacy-driver counterpart and was never ported past a
+# parameterized passthrough (T-040's math port never landed). Do not
+# install this for normal use.
+
+shaders = 1
+
+shader0 = shaders/mobile-lite.glsl
+filter_linear0 = false
+wrap_mode0 = clamp_to_edge
+scale_type0 = viewport
+scale0 = 1.0

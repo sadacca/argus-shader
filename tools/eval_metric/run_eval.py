@@ -32,7 +32,7 @@ from generate_shapes import SHAPES, SUPERSAMPLE, BG, FG  # noqa: E402
 SHAPES_DIR = Path(__file__).resolve().parent / "shapes"
 AUDIT_DIR = Path(__file__).resolve().parent / "audit"
 
-MOBILE_LITE = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "shaders" / "mobile-lite.slang"
+MOBILE_LITE = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "experimental" / "shaders" / "mobile-lite.slang"
 OMNISCALE = REPO_ROOT / "tools" / "edge_reconstruct" / "reference_shaders" / "omniscale.slang"
 
 # Fixed threshold from generate_shapes.py's known BG=(24,24,24)/FG=(235,235,235)
