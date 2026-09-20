@@ -115,12 +115,31 @@ equivalence check, not just the one-time validation. `run_eval.py`'s scoring hel
 imports anywhere in its dependency graph — `render_pass`/`render_multipass` are now lazily imported in
 `run_eval.py` only when a GPU-rendered candidate actually runs, which is also what makes the new
 `--skip-gpu` flag work in environments (like this one, this session) that have never had the GLES/EGL
-stack installed at all — see P-5. Verified via `--skip-gpu` here (no glslangValidator/EGL available in
-this session either — another live data point for P-5); the committed `tools/gold_eval/report.md`
-still reflects its last full GPU run and needs one more full (non-`--skip-gpu`) pass, in an
-environment with the GLES toolchain, to pick up the new `argus-cpu-ref` column and gate section —
-not done here since it would otherwise silently drop the omniscale/argus-mobile-lite/scalefx columns
-the committed report currently has.
+stack installed at all — see P-5. Verified via `--skip-gpu` here first (no glslangValidator/EGL
+available in this session's sandbox by default — another live data point for P-5); the GLES toolchain
+was then installed directly in-session (`apt-get install glslang-tools ... libegl1 libgles2
+libglx-mesa0`) to run the real thing, which surfaced and fixed an unrelated pre-existing CI bug
+(see "CI fix" below) before a full GPU run of `argus-cpu-ref` alongside every other candidate
+— including SABR/xBRZ, fetched to scratch per `docs/licensing.md` — became possible. `report.md` is
+now current, with the new `argus-cpu-ref` column matching `argus-mobile-lite` within 0.1pp under a
+real GPU too (82.87% vs 82.97% on `o_ring`/vector — the tiny remaining gap is almost certainly
+`np.round`'s round-half-to-even vs. GLSL's implementation-defined tie-breaking on the rare exact-0.5
+LUT direction component, not a real algorithmic difference).
+
+**CI fix (unrelated pre-existing bug, found while verifying the above).** Every CI run on this branch
+— including the pure-docs pivot commit that touched no code — was failing at "Run T-003 golden-image
+regression harness" with `OpenGL.error.Error: Attempt to retrieve context when no valid context`.
+Root cause: PyOpenGL auto-selects a platform plugin the first time any `OpenGL.*` symbol is imported
+(GLX by default on Linux), and uses that plugin's `GetCurrentContext()` for all of its own per-context
+state tracking. `egl_context.py`'s `HeadlessContext` makes a context current via raw `ctypes` calls
+directly into `libEGL.so.1` (deliberately — see its own docstring), which GLX has no way to observe,
+so PyOpenGL's tracking saw "no context" on the very first call needing it
+(`glVertexAttribPointer`) regardless of whether rendering itself would have worked. Reproduced locally
+by installing the same toolchain CI uses; fixed by setting `PYOPENGL_PLATFORM=egl` before the first
+`from OpenGL import GL` in both `render_pass.py` and `render_multipass.py` (duplicated in both rather
+than centralized, since platform selection isn't reconsidered on a later import and either file can be
+the first to touch `OpenGL` depending on caller). Verified fixed: `run_harness.py` now passes 62/62,
+`classifier_gpu/verify_gpu.py` passes, and the full `gold_eval` GPU run above completed clean.
 
 ### F-2 — Continuous-orientation contour estimation (replaces compass snapping)
 **Goal.** Per source pixel, estimate a local edge as a continuous orientation + signed offset (an
