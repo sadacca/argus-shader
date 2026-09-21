@@ -4,6 +4,13 @@ Technical review of the v0.1 requirements against the libretro slang shader spec
 ARM target hardware (Adreno 6xx/7xx). Findings are ordered by severity. Four are blocking — the
 plan as written could not be built. The rest are optimizations and process fixes.
 
+> **Superseded by the v0.3 pivot** (`docs/requirements.md`): **B1** (dual-axis system/genre preset
+> composition) and **P3** (text negative set) both served the dither-preservation/text-protection
+> goal that v0.3 reverses, and no longer apply. Everything else below — the LUT decomposition
+> (B2), varying-offset limits (B3), `OriginalHistory` vs. `PassFeedback` (B4), and the process
+> fixes (O1-O3, P1-P2, P4-P8) — are backend/spec/hardware facts independent of that goal and still
+> hold.
+
 ---
 
 ## Blocking: specified behavior that does not exist

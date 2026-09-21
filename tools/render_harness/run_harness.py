@@ -18,6 +18,13 @@ is therefore only partially met; see docs/backlog-status.md for what's left.
 
 Only single-pass presets are supported (matches every preset shipped so
 far); a preset with shaders > 1 is skipped with a warning.
+
+PRESET_DIRS includes `argus/experimental/`: the one preset that lived
+there (argus-mobile-lite) was moved out of the shipped pack (docs/backlog.md
+P-3, 2026-09-20) because it measures worse than nearest-neighbour on real
+content, but it's still golden-regression-tested as a named baseline the
+eval harness scores future candidates against — retiring it from general
+use doesn't mean it should regress silently.
 """
 import argparse
 import re
@@ -30,7 +37,10 @@ from compare_golden import compare
 from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PRESET_DIRS = [REPO_ROOT / "shaders" / "shaders_slang" / "argus"]
+PRESET_DIRS = [
+    REPO_ROOT / "shaders" / "shaders_slang" / "argus",
+    REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "experimental",
+]
 CORPUS_DIR = REPO_ROOT / "corpus" / "synthetic"
 GOLDENS_DIR = Path(__file__).resolve().parent / "goldens"
 

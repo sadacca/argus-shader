@@ -1,9 +1,9 @@
 # Licensing Posture for Reference Shaders
 
-**Resolves:** [T-001](backlog.md#t-001--determine-licensing-posture-for-reference-shaders) — "Determine
-licensing posture for reference shaders," Phase 0, Track B. Blocks T-014, T-018, and all of Phase 1
-shader authoring per the backlog and requirements §9/P5: this determination must exist before the
-first shader line is written, because a clean-room finding made after code exists would invalidate
+**Resolves:** the licensing posture for reference shaders (see [`docs/backlog.md`](backlog.md), "Reusable"
+table). This determination stands independent of the v0.3 pivot (`docs/requirements.md`) — whatever
+reconstruction algorithm replaces the retired one still needs to know what may be derived from vs.
+must be independently authored, and a clean-room finding made after code exists would invalidate
 that work rather than merely gate future work.
 
 **Scope.** For each of the five reference implementations named in requirements.md §4 (xBRZ, ScaleFX,

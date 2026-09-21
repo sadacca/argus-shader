@@ -1,7 +1,15 @@
-# T-013 — root .slangp skeleton for the mobile-lite tier (FR3: 1 pass, 1
-# output-resolution pass). T-020 landed the real fused classifier +
-# reconstruction pass in shaders/mobile-lite.slang; this preset now drives
-# that pass.
+# RETIRED / EXPERIMENTAL — not a recommended preset. Moved here (docs/
+# backlog.md, P-3) because it measures worse than nearest-neighbour on
+# real smooth content (docs/requirements.md §4, tools/gold_eval/report.md)
+# and real RetroArch testing found it "slow and nearly unplayable... no
+# benefit whatsoever to smoothing" next to xBRZ. Kept only as a named
+# baseline the eval harness (tools/gold_eval/, tools/render_harness/)
+# scores future candidates against — do not install this for normal use.
+# See docs/backlog-status.md for the code-level diagnosis of why.
+#
+# Original T-013/T-020 history: root .slangp skeleton for the mobile-lite
+# tier (FR3: 1 pass, 1 output-resolution pass), driving the fused
+# classifier + reconstruction pass in shaders/mobile-lite.slang.
 
 shaders = 1
 

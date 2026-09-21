@@ -38,12 +38,22 @@ Usage: python3 tools/render_harness/render_multipass.py preset.slangp source.png
 """
 import argparse
 import ctypes
+import os
 import re
 import sys
 from pathlib import Path
 
 import numpy as np
-from OpenGL import GL
+
+# Must happen before the first `from OpenGL import ...` anywhere in the
+# process — see render_pass.py's identical guard for why (PyOpenGL's
+# platform-plugin choice, made on first import, decides whether its
+# per-context state tracking can see a context made current via raw EGL
+# ctypes calls). Duplicated rather than imported from render_pass because
+# this file's own `from OpenGL import GL` below would otherwise run before
+# render_pass.py's copy does, if something imports this module first.
+os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
+from OpenGL import GL  # noqa: E402
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))

@@ -15,12 +15,28 @@ multi-pass tier needs it.
 import argparse
 import ctypes
 import hashlib
+import os
 import re
 import sys
 from pathlib import Path
 
 import numpy as np
-from OpenGL import GL
+
+# PyOpenGL auto-selects a platform plugin (GLX on Linux by default) the
+# first time any OpenGL.* symbol is imported, and that plugin is what its
+# internal contextdata bookkeeping uses to ask "what's the current
+# context?" for every call that needs per-context state (e.g.
+# glVertexAttribPointer). egl_context.py's HeadlessContext makes a context
+# current via raw ctypes calls into libEGL directly (see its own docstring
+# on why), which GLX has no way to see — so PyOpenGL's own tracking sees
+# "no context" and every such call raises `OpenGL.error.Error: Attempt to
+# retrieve context when no valid context`, real GPU behind it or not. This
+# must be set before the *first* `from OpenGL import ...` anywhere in the
+# process (platform selection isn't reconsidered on a later import), so
+# render_multipass.py carries the same two lines rather than relying on
+# import order between the two files.
+os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
+from OpenGL import GL  # noqa: E402
 from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

@@ -9,8 +9,9 @@ measurement) remain blocked on hardware this environment doesn't have. This
 script builds the calculated half now, so it's ready the moment T-006
 unblocks, rather than starting from nothing then.
 
-Method — cite-and-compute, not source parsing: shaders/shaders_slang/argus/
-shaders/mobile-lite.slang's actual read pattern was read by hand (see
+Method — cite-and-compute, not source parsing:
+shaders/shaders_slang/argus/experimental/shaders/mobile-lite.slang's actual
+read pattern was read by hand (see
 KERNEL_RADIUS/FETCH_COUNT comments below for exact line references) and
 encoded here as constants, the same level of rigor as tools/edge_reconstruct/
 edge_reference.py's hand-ported CPU model — this is deliberately not a GLSL
@@ -48,7 +49,7 @@ Usage: python3 tools/bandwidth_estimate/calculate_bpx.py
 """
 import sys
 
-# --- hand-verified against shaders/shaders_slang/argus/shaders/mobile-lite.slang ---
+# --- hand-verified against shaders/shaders_slang/argus/experimental/shaders/mobile-lite.slang ---
 KERNEL_RADIUS_TEXELS = 5  # 5x5 classification kernel, lines 371-379 (dx,dy in -2..2), unconditional
 EDGE_BRANCH_EXTRA_FETCHES = 9  # 8 topology-neighbor taps (line ~453-458) + 1 directional blend sample (~480/486)
 BEST_CASE_FETCHES = KERNEL_RADIUS_TEXELS * KERNEL_RADIUS_TEXELS  # isFlat/isDither/isStroke: no extra taps

@@ -38,7 +38,7 @@ CONTENT = [
     REPO_ROOT / "corpus" / "synthetic" / "rpg_text" / "rpg_dialogue_box.png",
     REPO_ROOT / "corpus" / "synthetic" / "rpg_text" / "rpg_letters.png",
 ]
-MOBILE_LITE = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "shaders" / "mobile-lite.slang"
+MOBILE_LITE = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "experimental" / "shaders" / "mobile-lite.slang"
 OMNISCALE = REPO_ROOT / "tools" / "edge_reconstruct" / "reference_shaders" / "omniscale.slang"
 
 

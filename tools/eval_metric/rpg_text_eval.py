@@ -42,7 +42,7 @@ HIGH_W, HIGH_H = NATIVE_W * SUPERSAMPLE, NATIVE_H * SUPERSAMPLE
 BG = (16, 16, 24)
 FG = (255, 255, 255)
 
-MOBILE_LITE = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "shaders" / "mobile-lite.slang"
+MOBILE_LITE = REPO_ROOT / "shaders" / "shaders_slang" / "argus" / "experimental" / "shaders" / "mobile-lite.slang"
 OMNISCALE = REPO_ROOT / "tools" / "edge_reconstruct" / "reference_shaders" / "omniscale.slang"
 
 LUMA = lambda rgb: 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
